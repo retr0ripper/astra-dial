@@ -11,8 +11,9 @@ struct KnobLogLine: Identifiable {
     let text: String
 }
 
-/// App state for the menu bar shell. This milestone only observes the knob;
-/// it doesn't block volume or run modes yet.
+/// App state: permissions, pairing, and the knob pipeline
+/// (HIDMonitor → KnobDecoder → GestureRecognizer → DialEngine, with MediaKeyTap taking
+/// the knob's volume events away from macOS when the mode needs them).
 @Observable
 final class AppModel {
     // Permissions
@@ -25,16 +26,30 @@ final class AppModel {
     private(set) var isPairing = false
     private(set) var connectedDeviceIDs: Set<DeviceID> = []
 
+    // Knob control
+    private(set) var mode: DialMode = .volume
+    private(set) var isTakeoverActive = false
+    var takeoverEnabled = UserDefaults.standard.object(forKey: AppModel.takeoverKey) as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(takeoverEnabled, forKey: Self.takeoverKey)
+            if !takeoverEnabled { engine.setMode(.volume) }
+            refreshTakeover()
+        }
+    }
+
     // Live knob readout
     private(set) var position = 0
     private(set) var isPressed = false
-    private(set) var pressCount = 0
     private(set) var log: [KnobLogLine] = []
 
     private(set) var launchAtLogin = false
 
     private let monitor = HIDMonitor()
     private var decoder = KnobDecoder()
+    private var recognizer = GestureRecognizer()
+    private let engine = DialEngine()
+    private let mediaKeyTap = MediaKeyTap()
+    private var gestureTimer: Timer?
     private var permissionTimer: Timer?
 
     struct PairedDevice: Codable, Hashable, Identifiable {
@@ -44,14 +59,25 @@ final class AppModel {
     }
 
     private static let pairedKey = "pairedDevices"
+    private static let takeoverKey = "takeoverEnabled"
 
     init() {
         loadPairedDevices()
         refreshPermissions()
         refreshLaunchAtLogin()
+
         monitor.onEvent = { [weak self] in self?.handle($0) }
         monitor.onDevicesChanged = { [weak self] in self?.refreshConnected() }
+        engine.onModeChange = { [weak self] in self?.mode = $0 }
+        mediaKeyTap.shouldClaim = { [weak self] key in
+            guard let self, isTakeoverActive, !isPairing else { return false }
+            // The press is always ours, so double- and long-press never toggle mute.
+            // Volume mode re-posts mute itself on a single press.
+            return key == .mute || engine.mode.claimsTurns
+        }
+
         startMonitor()
+        refreshTakeover()
         if pairedDevices.isEmpty { isPairing = true }
 
         // Permissions change in System Settings with no callback, so poll cheaply.
@@ -64,6 +90,7 @@ final class AppModel {
 
     var menuBarSymbol: String {
         if inputMonitoring != .granted { return "dial.low" }
+        if isTakeoverActive, isConnected { return mode.symbol }
         return isConnected ? "dial.high" : "dial.medium"
     }
 
@@ -71,10 +98,19 @@ final class AppModel {
         if inputMonitoring != .granted { return "Needs Input Monitoring" }
         if isPairing { return "Turn the knob to pair" }
         if pairedDevices.isEmpty { return "No keyboard paired" }
-        return isConnected ? "Knob connected" : "Keyboard not connected"
+        if !isConnected { return "Keyboard not connected" }
+        if !takeoverEnabled { return "Knob connected · controls volume only" }
+        if !isTakeoverActive { return "Knob connected · needs Accessibility for modes" }
+        return "\(mode.title) mode · double-press to switch"
     }
 
     // MARK: Actions
+
+    func selectMode(_ newMode: DialMode) {
+        guard isTakeoverActive else { return }
+        engine.setMode(newMode)
+        append("Switched to \(newMode.title) mode")
+    }
 
     func startPairing() {
         isPairing = true
@@ -89,7 +125,9 @@ final class AppModel {
         pairedDevices = []
         savePairedDevices()
         decoder.devices = []
+        engine.setMode(.volume)
         isPairing = true
+        refreshTakeover()
         append("Forgot paired keyboards")
     }
 
@@ -129,18 +167,44 @@ final class AppModel {
         }
 
         guard !pairedDevices.isEmpty, let signal = decoder.decode(event) else { return }
-        switch signal {
-        case .turn(let step):
-            position += step
-            append("\(step > 0 ? "Turn ⟳" : "Turn ⟲")  \(event.usageName)")
-        case .pressDown:
-            isPressed = true
-            pressCount += 1
-            append("Press ↓  \(event.usageName)")
-        case .pressUp:
-            isPressed = false
-            append("Press ↑")
+
+        if event.usagePage == HIDUsage.consumerPage, let key = MediaKey(hidUsage: event.usage) {
+            mediaKeyTap.recordKnob(key, isDown: event.value != 0)
         }
+
+        switch signal {
+        case .turn(let step): position += step
+        case .pressDown: isPressed = true
+        case .pressUp: isPressed = false
+        }
+
+        perform(recognizer.handle(signal, at: ProcessInfo.processInfo.systemUptime))
+        scheduleGestureTick()
+    }
+
+    private func perform(_ gestures: [KnobGesture]) {
+        for gesture in gestures {
+            if isTakeoverActive {
+                append(engine.perform(gesture))
+            } else {
+                append("\(gesture.logName) (modes off: knob controls volume)")
+            }
+        }
+    }
+
+    /// Fires the recognizer's timed gestures (single press, long press) with no further input.
+    private func scheduleGestureTick() {
+        gestureTimer?.invalidate()
+        gestureTimer = nil
+        guard let deadline = recognizer.nextDeadline else { return }
+        let delay = max(0, deadline - ProcessInfo.processInfo.systemUptime)
+        let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            perform(recognizer.tick(at: ProcessInfo.processInfo.systemUptime))
+            scheduleGestureTick()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        gestureTimer = timer
     }
 
     private func pair(with event: HIDEvent) {
@@ -152,6 +216,7 @@ final class AppModel {
         decoder.devices = Set(pairedDevices.map(\.id))
         isPairing = false
         refreshConnected()
+        refreshTakeover()
         append("Paired \(device.name) \(device.id) over \(device.transport.isEmpty ? "unknown transport" : device.transport)")
     }
 
@@ -167,10 +232,24 @@ final class AppModel {
         }
     }
 
+    /// Runs the event tap only when it can do something: modes on, a keyboard paired,
+    /// and Accessibility granted (tap creation fails without it).
+    private func refreshTakeover() {
+        let wanted = takeoverEnabled && !pairedDevices.isEmpty && accessibilityTrusted
+        if wanted, !mediaKeyTap.isRunning {
+            if !mediaKeyTap.start() { append("Couldn't start the media-key tap. Check Accessibility.") }
+        } else if !wanted, mediaKeyTap.isRunning {
+            mediaKeyTap.stop()
+        }
+        isTakeoverActive = mediaKeyTap.isRunning
+        if !isTakeoverActive { engine.setMode(.volume) }
+    }
+
     private func permissionTick() {
-        let before = inputMonitoring
+        let before = (inputMonitoring, accessibilityTrusted)
         refreshPermissions()
-        if before != .granted, inputMonitoring == .granted { startMonitor() }
+        if before.0 != .granted, inputMonitoring == .granted { startMonitor() }
+        if before.1 != accessibilityTrusted || mediaKeyTap.isRunning != isTakeoverActive { refreshTakeover() }
     }
 
     private func refreshPermissions() {
@@ -209,6 +288,17 @@ final class AppModel {
     private func savePairedDevices() {
         if let data = try? JSONEncoder().encode(pairedDevices) {
             UserDefaults.standard.set(data, forKey: Self.pairedKey)
+        }
+    }
+}
+
+private extension KnobGesture {
+    var logName: String {
+        switch self {
+        case .turn(let direction, _): direction > 0 ? "Turn ⟳" : "Turn ⟲"
+        case .press: "Press"
+        case .doublePress: "Double-press"
+        case .longPress: "Long-press"
         }
     }
 }

@@ -41,7 +41,7 @@ struct MenuView: View {
             )
             PermissionRow(
                 title: "Accessibility",
-                detail: "Send keys and scrolls (needed for modes)",
+                detail: "Take the knob from macOS and send scrolls (needed for modes)",
                 granted: model.accessibilityTrusted,
                 action: model.requestAccessibility
             )
@@ -84,9 +84,23 @@ struct MenuView: View {
             }
 
             if !model.pairedDevices.isEmpty {
+                Toggle("Use knob for modes", isOn: $model.takeoverEnabled)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .font(.callout)
+
+                Picker("Mode", selection: Binding(get: { model.mode }, set: { model.selectMode($0) })) {
+                    ForEach(DialMode.allCases) { mode in
+                        Label(mode.title, systemImage: mode.symbol).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .disabled(!model.isTakeoverActive)
+
                 HStack(spacing: 16) {
+                    Readout(label: "Mode", value: model.mode.title)
                     Readout(label: "Position", value: "\(model.position)")
-                    Readout(label: "Presses", value: "\(model.pressCount)")
                     Readout(label: "Button", value: model.isPressed ? "Down" : "Up")
                 }
             }
@@ -109,7 +123,7 @@ struct MenuView: View {
                 }
             }
 
-            Text("Modes aren't wired up yet. The knob still controls volume as normal.")
+            Text("Double-press: next mode · Long-press: back to Volume · Press in Volume: mute")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
