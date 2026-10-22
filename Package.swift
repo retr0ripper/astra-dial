@@ -5,6 +5,7 @@ let package = Package(
     name: "AstraDial",
     platforms: [.macOS(.v14)],
     products: [
+        .executable(name: "AstraDial", targets: ["AstraDial"]),
         .executable(name: "astra-probe", targets: ["astra-probe"]),
     ],
     targets: [
@@ -16,6 +17,11 @@ let package = Package(
             name: "astra-probe",
             dependencies: ["AstraCore"],
             path: "Tools/astra-probe"
+        ),
+        .executableTarget(
+            name: "AstraDial",
+            dependencies: ["AstraCore"],
+            linkerSettings: [.linkedFramework("ServiceManagement")]
         ),
         .testTarget(
             name: "AstraCoreTests",
