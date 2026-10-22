@@ -19,7 +19,11 @@ final class DialEngine {
     /// A mode was chosen with the knob; the HUD shows a short confirmation.
     var onModeChosen: ((DialMode) -> Void)?
 
+    /// An app's profile switched the mode; the HUD shows a short confirmation.
+    var onAutoMode: ((DialMode, String) -> Void)?
+
     private var timeoutTimer: Timer?
+    private var autoSelector = AutoModeSelector(baseMode: DialMode.volume)
 
     init(settings: DialSettings, runner: ModeRunner) {
         self.settings = settings
@@ -37,9 +41,27 @@ final class DialEngine {
         onModeChange?(newMode)
     }
 
-    /// Falls back to Volume if the active mode was turned off in Settings.
+    /// Falls back to Volume if the active mode was turned off in Settings, and leaves a
+    /// profile's mode if profiles were turned off.
     func settingsDidChange() {
+        if !settings.autoProfiles, let base = autoSelector.disable() { setMode(base) }
         if !settings.enabledModes.contains(mode) { setMode(.volume) }
+    }
+
+    /// Call when an app comes to the front. Ignored while the wheel is open or the ⌘Tab
+    /// switcher is held, so a profile never interrupts either.
+    func appDidActivate(bundleID: String, name: String) {
+        guard !wheel.isOpen, !runner.appSwitcher.isActive else { return }
+        let profileMode = settings.profileMode(forBundleID: bundleID)
+        guard let target = autoSelector.appActivated(profileMode: profileMode), target != mode else { return }
+        setMode(target)
+        onAutoMode?(target, name)
+    }
+
+    /// A mode picked by the user rather than a profile (wheel, long-press, menu).
+    func userChose(_ newMode: DialMode) {
+        autoSelector.userChose(newMode)
+        setMode(newMode)
     }
 
     func closeWheel() {
@@ -53,7 +75,7 @@ final class DialEngine {
     func reset() {
         closeWheel()
         runner.deactivate(mode)
-        setMode(.volume)
+        userChose(.volume)
     }
 
     /// Performs the gesture and returns a short description for the log.
@@ -103,7 +125,7 @@ final class DialEngine {
     }
 
     private func choose(_ newMode: DialMode) {
-        setMode(newMode)
+        userChose(newMode)
         onModeChosen?(newMode)
     }
 

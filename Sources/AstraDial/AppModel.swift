@@ -83,6 +83,18 @@ final class AppModel {
             hud.update(wheel: wheel, modes: engine.wheelModes, activeMode: engine.mode)
         }
         engine.onModeChosen = { [weak self] in self?.hud.showToast($0) }
+        engine.onAutoMode = { [weak self] mode, appName in
+            self?.hud.showToast(mode)
+            self?.append("\(appName) → \(mode.title) mode (profile)")
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let self, isTakeoverActive,
+                  let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  let bundleID = app.bundleIdentifier else { return }
+            engine.appDidActivate(bundleID: bundleID, name: app.localizedName ?? bundleID)
+        }
         runner.onLevel = { [weak self] mode, level in self?.hud.showToast(mode, level: level) }
         settings.onChange = { [weak self] in self?.applySettings() }
         applySettings()
@@ -132,7 +144,7 @@ final class AppModel {
 
     func selectMode(_ newMode: DialMode) {
         guard isTakeoverActive else { return }
-        engine.setMode(newMode)
+        engine.userChose(newMode)
         append("Switched to \(newMode.title) mode")
     }
 

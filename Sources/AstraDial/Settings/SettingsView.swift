@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Opens a single Settings window. A plain NSWindow rather than a SwiftUI `Settings` or
 /// `Window` scene, which a menu-bar-only (LSUIElement) app can't reliably bring to the front.
@@ -48,6 +49,20 @@ struct SettingsView: View {
                 Text("Drag to reorder the wheel. Turned-off modes are left off the wheel. Volume always stays on: long-press returns to it.")
             }
 
+            Section {
+                Toggle("Switch modes automatically per app", isOn: $settings.autoProfiles)
+                ForEach(settings.appProfiles) { profile in
+                    ProfileRow(profile: profile, settings: settings)
+                }
+                .disabled(!settings.autoProfiles)
+                AddProfileMenu(settings: settings)
+                    .disabled(!settings.autoProfiles)
+            } header: {
+                Text("App modes")
+            } footer: {
+                Text("Switching to one of these apps selects its mode; leaving returns to the mode you were using. A mode you pick inside the app lasts until you switch apps.")
+            }
+
             Section("Feel") {
                 LabeledSlider(title: "Scroll speed", value: $settings.scrollSpeed, range: 16...120, step: 8) {
                     "\(Int($0)) px per click"
@@ -92,8 +107,8 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 540)
-        .fixedSize(horizontal: false, vertical: true)
+        // The form scrolls inside a fixed height so the window fits a 1080p screen.
+        .frame(width: 560, height: 720)
         .onAppear { brightness.scan() }
     }
 
@@ -151,6 +166,121 @@ private struct ModeRow: View {
             get: { settings.pressAction(for: mode) },
             set: { settings.pressActions[mode] = $0 == .modeDefault ? nil : $0 }
         )
+    }
+}
+
+private struct ProfileRow: View {
+    let profile: AppProfile
+    @Bindable var settings: DialSettings
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(nsImage: AppInfo.icon(forBundleID: profile.bundleID))
+                .resizable()
+                .frame(width: 20, height: 20)
+            Text(profile.name)
+            Spacer()
+            Picker("Mode", selection: mode) {
+                ForEach(DialMode.allCases) { mode in
+                    Label(mode.title, systemImage: mode.symbol).tag(mode)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 150)
+            Button {
+                settings.removeProfile(profile)
+            } label: {
+                Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help("Remove \(profile.name)")
+        }
+        .opacity(settings.enabledModes.contains(profile.mode) ? 1 : 0.5)
+        .help(settings.enabledModes.contains(profile.mode) ? "" : "\(profile.mode.title) is turned off in Modes, so this profile is skipped")
+    }
+
+    private var mode: Binding<DialMode> {
+        Binding(
+            get: { profile.mode },
+            set: { newMode in
+                if let index = settings.appProfiles.firstIndex(where: { $0.bundleID == profile.bundleID }) {
+                    settings.appProfiles[index].mode = newMode
+                }
+            }
+        )
+    }
+}
+
+private struct AddProfileMenu: View {
+    @Bindable var settings: DialSettings
+
+    var body: some View {
+        Menu("Add App") {
+            let apps = AppInfo.runningApps().filter { app in
+                !settings.appProfiles.contains { $0.bundleID == app.bundleID }
+            }
+            Section("Running") {
+                ForEach(apps, id: \.bundleID) { app in
+                    Button {
+                        settings.addProfile(bundleID: app.bundleID, name: app.name, mode: AppInfo.suggestedMode(forBundleID: app.bundleID))
+                    } label: {
+                        Text(app.name)
+                    }
+                }
+            }
+            Divider()
+            Button("Choose from Applications…", action: chooseApp)
+        }
+        .fixedSize()
+    }
+
+    private func chooseApp() {
+        let panel = NSOpenPanel()
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.allowedContentTypes = [.application]
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url,
+              let bundle = Bundle(url: url), let bundleID = bundle.bundleIdentifier else { return }
+        let name = FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
+        settings.addProfile(bundleID: bundleID, name: name, mode: AppInfo.suggestedMode(forBundleID: bundleID))
+    }
+}
+
+private enum AppInfo {
+    struct App {
+        let bundleID: String
+        let name: String
+    }
+
+    /// Regular apps that are running now, excluding Astra Dial, sorted by name.
+    static func runningApps() -> [App] {
+        NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular && $0.bundleIdentifier != Bundle.main.bundleIdentifier }
+            .compactMap { app in
+                guard let bundleID = app.bundleIdentifier else { return nil }
+                return App(bundleID: bundleID, name: app.localizedName ?? bundleID)
+            }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    static func icon(forBundleID bundleID: String) -> NSImage {
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            return NSWorkspace.shared.icon(forFile: url.path)
+        }
+        return NSImage(systemSymbolName: "app", accessibilityDescription: nil) ?? NSImage()
+    }
+
+    /// A starting mode for well-known apps; anything else starts on Scroll.
+    static func suggestedMode(forBundleID bundleID: String) -> DialMode {
+        switch bundleID {
+        case "com.apple.iWork.Keynote", "com.microsoft.Powerpoint": .slides
+        case "com.apple.FinalCut", "com.colliderli.iina", "com.apple.QuickTimePlayerX",
+             "org.videolan.vlc", "com.blackmagic-design.DaVinciResolve": .scrub
+        case "com.figma.Desktop", "com.bohemiancoding.sketch3", "com.apple.Preview": .zoom
+        case "com.apple.Safari", "com.google.Chrome", "company.thebrowser.Browser",
+             "org.mozilla.firefox", "com.microsoft.edgemac": .tabs
+        default: .scroll
+        }
     }
 }
 
