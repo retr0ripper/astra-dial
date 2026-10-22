@@ -15,7 +15,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 VERSION="$(cat VERSION)"
-GITHUB_REPO="${GITHUB_REPO:-OWNER/astra-dial}"
+GITHUB_REPO="${GITHUB_REPO:-retr0ripper/astra-dial}"
 OUT="build/release"
 APP="build/Astra Dial.app"
 DMG="$OUT/AstraDial-$VERSION.dmg"
