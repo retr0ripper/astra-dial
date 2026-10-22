@@ -34,8 +34,10 @@ Grant Input Monitoring when asked, then turn the knob to pair the keyboard. Acce
 used yet but will be needed for modes. `swift run AstraDial` also works for quick iteration, but
 launch at login only works from the bundled app.
 
-Ad-hoc signed builds get a new signature each time, so macOS may ask for permissions again after
-a rebuild. Set `SIGN_IDENTITY` to a Developer ID to avoid that.
+Run `Scripts/create-signing-cert.sh` once first. It creates a self-signed "Astra Dial Local Signing"
+certificate that `bundle.sh` picks up, so every build has the same identity and macOS keeps
+Input Monitoring and Accessibility across rebuilds. Without it, builds are signed ad-hoc and macOS
+asks again after each one. `SIGN_IDENTITY` overrides the choice (for example a Developer ID).
 
 ## Layout
 

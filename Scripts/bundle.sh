@@ -4,8 +4,9 @@
 #   Scripts/bundle.sh            release build for this Mac's architecture
 #   Scripts/bundle.sh --universal  arm64 + x86_64
 #
-# Ad-hoc signatures change on every build, so macOS may ask for Input Monitoring
-# and Accessibility again after a rebuild. Sign with a Developer ID to avoid that:
+# Signing: uses "Astra Dial Local Signing" if Scripts/create-signing-cert.sh has created it,
+# so macOS keeps Input Monitoring and Accessibility across rebuilds. Otherwise falls back to
+# ad-hoc, which makes macOS ask again after every rebuild. Override with
 #   SIGN_IDENTITY="Developer ID Application: …" Scripts/bundle.sh
 set -euo pipefail
 
@@ -13,7 +14,16 @@ cd "$(dirname "$0")/.."
 APP_NAME="Astra Dial"
 BUNDLE_ID="${BUNDLE_ID:-com.astradial.AstraDial}"
 VERSION="${VERSION:-0.1.0}"
-SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+LOCAL_IDENTITY="Astra Dial Local Signing"
+if [[ -z "${SIGN_IDENTITY:-}" ]]; then
+  if security find-identity -p codesigning | grep -q "\"$LOCAL_IDENTITY\""; then
+    SIGN_IDENTITY="$LOCAL_IDENTITY"
+  else
+    SIGN_IDENTITY="-"
+    echo "warning: ad-hoc signing; macOS will re-ask for permissions after each rebuild." >&2
+    echo "         Run Scripts/create-signing-cert.sh once to fix that." >&2
+  fi
+fi
 
 ARCH_FLAGS=()
 if [[ "${1:-}" == "--universal" ]]; then
@@ -48,4 +58,4 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 codesign --force --options runtime --sign "$SIGN_IDENTITY" --identifier "$BUNDLE_ID" "$APP"
-echo "Built $APP"
+echo "Built $APP (signed: $SIGN_IDENTITY)"
