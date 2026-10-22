@@ -32,7 +32,10 @@ final class AppModel {
     var takeoverEnabled = UserDefaults.standard.object(forKey: AppModel.takeoverKey) as? Bool ?? true {
         didSet {
             UserDefaults.standard.set(takeoverEnabled, forKey: Self.takeoverKey)
-            if !takeoverEnabled { engine.setMode(.volume) }
+            if !takeoverEnabled {
+                engine.closeWheel()
+                engine.setMode(.volume)
+            }
             refreshTakeover()
         }
     }
@@ -49,6 +52,7 @@ final class AppModel {
     private var recognizer = GestureRecognizer()
     private let engine = DialEngine()
     private let mediaKeyTap = MediaKeyTap()
+    private let hud = WheelHUD()
     private var gestureTimer: Timer?
     private var permissionTimer: Timer?
 
@@ -69,11 +73,16 @@ final class AppModel {
         monitor.onEvent = { [weak self] in self?.handle($0) }
         monitor.onDevicesChanged = { [weak self] in self?.refreshConnected() }
         engine.onModeChange = { [weak self] in self?.mode = $0 }
+        engine.onWheelChange = { [weak self] wheel in
+            guard let self else { return }
+            hud.update(wheel: wheel, activeMode: engine.mode)
+        }
+        engine.onModeChosen = { [weak self] in self?.hud.showToast($0) }
         mediaKeyTap.shouldClaim = { [weak self] key in
             guard let self, isTakeoverActive, !isPairing else { return false }
             // The press is always ours, so double- and long-press never toggle mute.
             // Volume mode re-posts mute itself on a single press.
-            return key == .mute || engine.mode.claimsTurns
+            return key == .mute || engine.claimsTurns
         }
 
         startMonitor()
@@ -101,7 +110,7 @@ final class AppModel {
         if !isConnected { return "Keyboard not connected" }
         if !takeoverEnabled { return "Knob connected · controls volume only" }
         if !isTakeoverActive { return "Knob connected · needs Accessibility for modes" }
-        return "\(mode.title) mode · double-press to switch"
+        return "\(mode.title) mode · double-press for the wheel"
     }
 
     // MARK: Actions
@@ -125,6 +134,7 @@ final class AppModel {
         pairedDevices = []
         savePairedDevices()
         decoder.devices = []
+        engine.closeWheel()
         engine.setMode(.volume)
         isPairing = true
         refreshTakeover()
@@ -242,7 +252,10 @@ final class AppModel {
             mediaKeyTap.stop()
         }
         isTakeoverActive = mediaKeyTap.isRunning
-        if !isTakeoverActive { engine.setMode(.volume) }
+        if !isTakeoverActive {
+            engine.closeWheel()
+            engine.setMode(.volume)
+        }
     }
 
     private func permissionTick() {

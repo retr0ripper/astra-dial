@@ -94,9 +94,12 @@ struct MenuView: View {
                         Label(mode.title, systemImage: mode.symbol).tag(mode)
                     }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                .pickerStyle(.menu)
                 .disabled(!model.isTakeoverActive)
+
+                Text("Turn: \(model.mode.turnHint) · Press: \(model.mode.pressHint)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 HStack(spacing: 16) {
                     Readout(label: "Mode", value: model.mode.title)
@@ -123,7 +126,7 @@ struct MenuView: View {
                 }
             }
 
-            Text("Double-press: next mode · Long-press: back to Volume · Press in Volume: mute")
+            Text("Double-press: mode wheel · Long-press: back to Volume")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
