@@ -57,4 +57,34 @@ private let muteDown = MediaKeyMatcher.Press(.mute, isDown: true)
         #expect(matcher.tapEvent(id: 1, upDown, at: 1 * ms) == .knob)
         #expect(matcher.tapEvent(id: 2, upDown, at: 2 * ms) == .pending)
     }
+
+    @Test func repeatWhileKnobHeldIsKnob() {
+        // Holding the knob: macOS repeats Mute with no HID value behind each repeat.
+        var matcher = MediaKeyMatcher()
+        _ = matcher.recordKnob(muteDown, at: 0)
+        #expect(matcher.tapEvent(id: 1, muteDown, at: 1 * ms) == .knob)
+        #expect(matcher.tapRepeat(.mute, at: 600 * ms) == .knob)
+        #expect(matcher.tapRepeat(.mute, at: 1900 * ms) == .knob)
+    }
+
+    @Test func repeatInFlightAtReleaseIsStillKnob() {
+        var matcher = MediaKeyMatcher()
+        _ = matcher.recordKnob(muteDown, at: 0)
+        _ = matcher.recordKnob(.init(.mute, isDown: false), at: 2000 * ms)
+        #expect(matcher.tapRepeat(.mute, at: 2050 * ms) == .knob)
+    }
+
+    @Test func repeatLongAfterReleaseOrFromOtherKeyboardPassesThrough() {
+        var matcher = MediaKeyMatcher()
+        #expect(matcher.tapRepeat(.soundUp, at: 0) == .passThrough)
+        _ = matcher.recordKnob(muteDown, at: 0)
+        _ = matcher.recordKnob(.init(.mute, isDown: false), at: 2000 * ms)
+        #expect(matcher.tapRepeat(.mute, at: 3000 * ms) == .passThrough)
+    }
+
+    @Test func heldKeyIsTrackedPerKey() {
+        var matcher = MediaKeyMatcher()
+        _ = matcher.recordKnob(muteDown, at: 0)
+        #expect(matcher.tapRepeat(.soundUp, at: 1 * ms) == .passThrough)
+    }
 }

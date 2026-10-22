@@ -1,6 +1,9 @@
 import AppKit
 import AstraCore
 import CoreGraphics
+import os
+
+private let log = Logger(subsystem: "com.astradial.AstraDial", category: "MediaKeyTap")
 
 /// Intercepts volume and mute media-key events at the HID event tap and drops the ones that
 /// came from the paired knob, when the active mode wants them. Other keyboards' volume keys
@@ -68,19 +71,30 @@ final class MediaKeyTap {
             return Unmanaged.passUnretained(event)
         }
         guard event.getIntegerValueField(.eventSourceUserData) != MediaKeyPoster.tag,
-              let press = Self.mediaKeyPress(from: event),
+              let (press, isRepeat) = Self.mediaKeyPress(from: event),
               shouldClaim(press.key) else {
             return Unmanaged.passUnretained(event)
         }
 
+        // Auto-repeats have no HID value to match; see MediaKeyMatcher.tapRepeat.
+        if isRepeat {
+            let decision = matcher.tapRepeat(press.key, at: Self.now())
+            log.debug("repeat key=\(press.key.rawValue) down=\(press.isDown) → \(String(describing: decision))")
+            return decision == .knob ? nil : Unmanaged.passUnretained(event)
+        }
+
         nextID += 1
-        switch matcher.tapEvent(id: nextID, press, at: Self.now()) {
+        let decision = matcher.tapEvent(id: nextID, press, at: Self.now())
+        log.debug("event key=\(press.key.rawValue) down=\(press.isDown) → \(String(describing: decision))")
+        switch decision {
         case .knob:
             return nil
         case .pending:
             if let copy = event.copy() { held[nextID] = copy }
             scheduleExpiry()
             return nil
+        case .passThrough:
+            return Unmanaged.passUnretained(event)
         }
     }
 
@@ -89,7 +103,10 @@ final class MediaKeyTap {
         let timer = Timer(timeInterval: 0.005, repeats: true) { [weak self] timer in
             guard let self else { timer.invalidate(); return }
             for id in matcher.expire(at: Self.now()) {
-                if let event = held.removeValue(forKey: id) { MediaKeyPoster.repost(event) }
+                if let event = held.removeValue(forKey: id) {
+                    log.debug("released held event \(id) to the system")
+                    MediaKeyPoster.repost(event)
+                }
             }
             if !matcher.hasPending {
                 timer.invalidate()
@@ -108,14 +125,15 @@ final class MediaKeyTap {
         matcher = MediaKeyMatcher()
     }
 
-    static func mediaKeyPress(from event: CGEvent) -> MediaKeyMatcher.Press? {
+    /// Parses a media-key event. Bit 0 of data1 is set on auto-repeats.
+    static func mediaKeyPress(from event: CGEvent) -> (MediaKeyMatcher.Press, isRepeat: Bool)? {
         guard event.type.rawValue == UInt32(NSEvent.EventType.systemDefined.rawValue),
               let nsEvent = NSEvent(cgEvent: event),
               nsEvent.subtype.rawValue == 8 else { return nil }
         let keyCode = (nsEvent.data1 & 0xFFFF_0000) >> 16
         let state = (nsEvent.data1 & 0xFF00) >> 8
         guard let key = MediaKey(rawValue: keyCode), state == 0xA || state == 0xB else { return nil }
-        return .init(key, isDown: state == 0xA)
+        return (.init(key, isDown: state == 0xA), nsEvent.data1 & 0x1 != 0)
     }
 
     private static func now() -> UInt64 { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
