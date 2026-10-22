@@ -10,7 +10,13 @@ final class HUDState {
     var activeMode: DialMode = .volume
     /// Unwrapped highlight position, so the highlight animates the short way across 12 o'clock.
     var cursor = 0
-    var toast: DialMode?
+    var toast: Toast?
+
+    struct Toast: Equatable {
+        let mode: DialMode
+        /// A level in percent to show as a bar, or nil for a plain mode confirmation.
+        let level: Int?
+    }
 
     var highlighted: Int { ((cursor % modes.count) + modes.count) % modes.count }
 }
@@ -44,10 +50,11 @@ final class WheelHUD {
         panel.contentView = NSHostingView(rootView: HUDView(state: state))
     }
 
-    func update(wheel: ModeWheel, activeMode: DialMode) {
+    func update(wheel: ModeWheel, modes: [DialMode], activeMode: DialMode) {
         state.activeMode = activeMode
         if wheel.isOpen {
             if !state.isWheelOpen {
+                state.modes = modes
                 state.cursor = wheel.highlighted
                 state.toast = nil
                 show()
@@ -65,9 +72,10 @@ final class WheelHUD {
         }
     }
 
-    func showToast(_ mode: DialMode) {
-        state.activeMode = mode
-        state.toast = mode
+    func showToast(_ mode: DialMode, level: Int? = nil) {
+        guard !state.isWheelOpen else { return }
+        if level == nil { state.activeMode = mode }
+        state.toast = HUDState.Toast(mode: mode, level: level)
         show()
         toastWork?.cancel()
         let work = DispatchWorkItem { [weak self] in

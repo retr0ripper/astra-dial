@@ -9,14 +9,14 @@ struct HUDView: View {
             if state.isWheelOpen {
                 WheelView(state: state)
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
-            } else if let mode = state.toast {
-                ToastView(mode: mode)
+            } else if let toast = state.toast {
+                ToastView(toast: toast)
                     .transition(.scale(scale: 0.9).combined(with: .opacity))
             }
         }
         .frame(width: WheelHUD.size.width, height: WheelHUD.size.height)
         .animation(.spring(duration: 0.22), value: state.isWheelOpen)
-        .animation(.easeOut(duration: 0.18), value: state.toast)
+        .animation(.easeOut(duration: 0.18), value: state.toast == nil)
         .environment(\.colorScheme, .dark)
     }
 }
@@ -79,18 +79,40 @@ private struct WheelView: View {
 }
 
 private struct ToastView: View {
-    let mode: DialMode
+    let toast: HUDState.Toast
 
     var body: some View {
         VStack(spacing: 8) {
-            Image(systemName: mode.symbol)
+            Image(systemName: toast.mode.symbol)
                 .font(.system(size: 34, weight: .semibold))
-            Text(mode.title)
-                .font(.system(size: 15, weight: .semibold))
+            if let level = toast.level {
+                LevelBar(level: level)
+                Text("\(level)%")
+                    .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(toast.mode.title)
+                    .font(.system(size: 15, weight: .semibold))
+            }
         }
         .foregroundStyle(.white)
-        .frame(width: 140, height: 120)
+        .frame(width: 160, height: toast.level == nil ? 120 : 136)
         .background(HUDMaterial().clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous)))
+    }
+}
+
+private struct LevelBar: View {
+    let level: Int
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.white.opacity(0.18))
+                Capsule().fill(.white).frame(width: proxy.size.width * CGFloat(level) / 100)
+            }
+        }
+        .frame(width: 112, height: 6)
+        .animation(.easeOut(duration: 0.1), value: level)
     }
 }
 

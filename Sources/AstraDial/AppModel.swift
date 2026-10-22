@@ -32,10 +32,7 @@ final class AppModel {
     var takeoverEnabled = UserDefaults.standard.object(forKey: AppModel.takeoverKey) as? Bool ?? true {
         didSet {
             UserDefaults.standard.set(takeoverEnabled, forKey: Self.takeoverKey)
-            if !takeoverEnabled {
-                engine.closeWheel()
-                engine.setMode(.volume)
-            }
+            if !takeoverEnabled { engine.reset() }
             refreshTakeover()
         }
     }
@@ -50,7 +47,10 @@ final class AppModel {
     private let monitor = HIDMonitor()
     private var decoder = KnobDecoder()
     private var recognizer = GestureRecognizer()
-    private let engine = DialEngine()
+    let settings: DialSettings
+    private let runner: ModeRunner
+    private let engine: DialEngine
+    private let settingsWindow = SettingsWindowController()
     private let mediaKeyTap = MediaKeyTap()
     private let hud = WheelHUD()
     private var gestureTimer: Timer?
@@ -65,7 +65,12 @@ final class AppModel {
     private static let pairedKey = "pairedDevices"
     private static let takeoverKey = "takeoverEnabled"
 
+    var brightness: BrightnessController { runner.brightness }
+
     init() {
+        settings = DialSettings()
+        runner = ModeRunner(settings: settings)
+        engine = DialEngine(settings: settings, runner: runner)
         loadPairedDevices()
         refreshPermissions()
         refreshLaunchAtLogin()
@@ -75,14 +80,17 @@ final class AppModel {
         engine.onModeChange = { [weak self] in self?.mode = $0 }
         engine.onWheelChange = { [weak self] wheel in
             guard let self else { return }
-            hud.update(wheel: wheel, activeMode: engine.mode)
+            hud.update(wheel: wheel, modes: engine.wheelModes, activeMode: engine.mode)
         }
         engine.onModeChosen = { [weak self] in self?.hud.showToast($0) }
+        runner.onLevel = { [weak self] mode, level in self?.hud.showToast(mode, level: level) }
+        settings.onChange = { [weak self] in self?.applySettings() }
+        applySettings()
         mediaKeyTap.shouldClaim = { [weak self] key in
             guard let self, isTakeoverActive, !isPairing else { return false }
             // The press is always ours, so double- and long-press never toggle mute.
             // Volume mode re-posts mute itself on a single press.
-            return key == .mute || engine.claimsTurns
+            return key.isKnobKey && (key == .mute || engine.claimsTurns)
         }
 
         startMonitor()
@@ -115,6 +123,13 @@ final class AppModel {
 
     // MARK: Actions
 
+    /// What a press does in the active mode, following Settings.
+    var pressHint: String { runner.pressHint(mode) }
+
+    func openSettings() {
+        settingsWindow.show(model: self)
+    }
+
     func selectMode(_ newMode: DialMode) {
         guard isTakeoverActive else { return }
         engine.setMode(newMode)
@@ -134,8 +149,7 @@ final class AppModel {
         pairedDevices = []
         savePairedDevices()
         decoder.devices = []
-        engine.closeWheel()
-        engine.setMode(.volume)
+        engine.reset()
         isPairing = true
         refreshTakeover()
         append("Forgot paired keyboards")
@@ -253,9 +267,14 @@ final class AppModel {
         }
         isTakeoverActive = mediaKeyTap.isRunning
         if !isTakeoverActive {
-            engine.closeWheel()
-            engine.setMode(.volume)
+            engine.reset()
         }
+    }
+
+    private func applySettings() {
+        recognizer.doublePressWindow = settings.doublePressWindow
+        recognizer.longPressDuration = settings.longPressDuration
+        engine.settingsDidChange()
     }
 
     private func permissionTick() {

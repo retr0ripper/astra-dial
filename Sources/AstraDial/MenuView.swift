@@ -90,14 +90,14 @@ struct MenuView: View {
                     .font(.callout)
 
                 Picker("Mode", selection: Binding(get: { model.mode }, set: { model.selectMode($0) })) {
-                    ForEach(DialMode.allCases) { mode in
+                    ForEach(model.settings.enabledModes) { mode in
                         Label(mode.title, systemImage: mode.symbol).tag(mode)
                     }
                 }
                 .pickerStyle(.menu)
                 .disabled(!model.isTakeoverActive)
 
-                Text("Turn: \(model.mode.turnHint) · Press: \(model.mode.pressHint)")
+                Text("Turn: \(model.mode.turnHint) · Press: \(model.pressHint)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -145,6 +145,9 @@ struct MenuView: View {
             if !model.pairedDevices.isEmpty {
                 Button("Forget", action: model.forgetDevices).controlSize(.small)
             }
+            Button("Settings…", action: model.openSettings)
+                .controlSize(.small)
+                .keyboardShortcut(",")
             Button("Quit") { NSApplication.shared.terminate(nil) }
                 .controlSize(.small)
                 .keyboardShortcut("q")
