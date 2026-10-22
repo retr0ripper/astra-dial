@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds AstraDial and wraps it in build/Astra Dial.app (menu bar only, ad-hoc signed).
+# Builds AstraDial and wraps it in build/Astra Dial.app (menu bar only).
 #
 #   Scripts/bundle.sh            release build for this Mac's architecture
 #   Scripts/bundle.sh --universal  arm64 + x86_64
@@ -13,7 +13,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 APP_NAME="Astra Dial"
 BUNDLE_ID="${BUNDLE_ID:-com.astradial.AstraDial}"
-VERSION="${VERSION:-0.1.0}"
+VERSION="${VERSION:-$(cat VERSION)}"
+BUILD_NUMBER="${BUILD_NUMBER:-$(git rev-list --count HEAD 2>/dev/null || echo 1)}"
 LOCAL_IDENTITY="Astra Dial Local Signing"
 if [[ -z "${SIGN_IDENTITY:-}" ]]; then
   if security find-identity -p codesigning | grep -q "\"$LOCAL_IDENTITY\""; then
@@ -37,6 +38,7 @@ APP="build/$APP_NAME.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/AstraDial" "$APP/Contents/MacOS/AstraDial"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -49,7 +51,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>AstraDial</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
-  <key>CFBundleVersion</key><string>$VERSION</string>
+  <key>CFBundleVersion</key><string>$BUILD_NUMBER</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
+  <key>NSHumanReadableCopyright</key><string>Astra Dial is not affiliated with Cosmic Byte.</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
@@ -57,5 +62,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --options runtime --sign "$SIGN_IDENTITY" --identifier "$BUNDLE_ID" "$APP"
+# Developer ID builds need a secure timestamp for notarization; local builds skip the network call.
+TIMESTAMP=(--timestamp=none)
+[[ "$SIGN_IDENTITY" == "Developer ID Application:"* ]] && TIMESTAMP=(--timestamp)
+codesign --force --options runtime "${TIMESTAMP[@]}" --sign "$SIGN_IDENTITY" --identifier "$BUNDLE_ID" "$APP"
 echo "Built $APP (signed: $SIGN_IDENTITY)"

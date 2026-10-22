@@ -1,4 +1,4 @@
-.PHONY: build test probe probe-list app run clean
+.PHONY: build test probe probe-list app run release icon clean
 
 build:
 	swift build
@@ -17,6 +17,12 @@ app:
 
 run: app
 	open "build/Astra Dial.app"
+
+release:
+	Scripts/release.sh
+
+icon:
+	swift Scripts/make-icon.swift Resources/AppIcon.icns
 
 clean:
 	rm -rf .build build

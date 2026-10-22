@@ -8,9 +8,11 @@ The knob sends standard HID media keys (Volume Up/Down per detent, Mute on press
 reads them with IOHIDManager, only from the keyboard you pair, so other keyboards' volume keys
 are unaffected.
 
-**Status:** milestone 1–2. The probe tool and menu bar shell work: permissions, pairing by turning
-the knob, and a live readout of turns and presses. Modes, the wheel and volume suppression are next.
-Until then the knob keeps controlling volume as normal.
+Double-press the knob to open the mode wheel, turn to pick a mode, press to switch. Modes:
+Volume, Brightness (external displays over DDC/CI), Scroll, Zoom, Apps (⌘Tab), Tabs, Desktops,
+Undo, Scrub and Slides. Long-press returns to Volume. Settings reorders and hides modes, sets a
+press action per mode, tunes speeds and timings, and assigns modes to apps so they switch
+automatically.
 
 Requires macOS 14+ and Swift 6 (Xcode 16 or later).
 
@@ -39,6 +41,28 @@ certificate that `bundle.sh` picks up, so every build has the same identity and 
 Input Monitoring and Accessibility across rebuilds. Without it, builds are signed ad-hoc and macOS
 asks again after each one. `SIGN_IDENTITY` overrides the choice (for example a Developer ID).
 
+## Release
+
+```sh
+make release      # universal app, DMG and Homebrew cask in build/release/
+```
+
+The version comes from `VERSION`, and the build number from the commit count. With a
+**Developer ID Application** certificate in the keychain, `release.sh` signs with it and, when
+`NOTARY_PROFILE` is set, notarizes and staples the DMG:
+
+```sh
+xcrun notarytool store-credentials astra-dial --apple-id <apple id> --team-id <team id>
+NOTARY_PROFILE=astra-dial GITHUB_REPO=<owner>/astra-dial make release
+```
+
+Without one, it signs with the local certificate. Gatekeeper then blocks the first open on other
+Macs until the user right-clicks → Open or runs
+`xattr -dr com.apple.quarantine "/Applications/Astra Dial.app"`.
+
+`build/release/astra-dial.rb` is a Homebrew cask pointing at the GitHub release asset; publish it
+in a tap. `make icon` re-renders `Resources/AppIcon.icns` from `Scripts/make-icon.swift`.
+
 ## Layout
 
 ```
@@ -47,4 +71,6 @@ Sources/AstraDial/    SwiftUI MenuBarExtra app
 Tools/astra-probe/    command-line probe
 Tests/AstraCoreTests/ decoder tests
 Scripts/bundle.sh     builds and signs the .app
+Scripts/release.sh    universal build, DMG, notarization, cask
+packaging/            Homebrew cask template
 ```
