@@ -5,6 +5,7 @@
 //   swift run astra-probe --list     list matching devices and exit
 //   swift run astra-probe --vendor   also print vendor-specific pages (some mice flood these)
 //   swift run astra-probe --all      also print every keyboard key (this logs your typing)
+//   swift run astra-probe --ddc      read each external display's brightness over DDC/CI and exit
 //
 // The terminal running it needs Input Monitoring (System Settings › Privacy & Security).
 
@@ -14,7 +15,22 @@ import IOKit.hid
 
 let args = Set(CommandLine.arguments.dropFirst())
 if args.contains("-h") || args.contains("--help") {
-    print("usage: astra-probe [--list] [--vendor] [--all]")
+    print("usage: astra-probe [--list] [--vendor] [--all] [--ddc]")
+    exit(0)
+}
+
+if args.contains("--ddc") {
+    let displays = DDCDisplay.all()
+    print("External displays with an AV service: \(displays.count)")
+    for display in displays {
+        if let reply = display.read(DDCPacket.brightness) {
+            print("  \(display.name): brightness \(reply.current) of \(reply.maximum)")
+        } else {
+            let raw = display.readRaw(DDCPacket.brightness)
+            let hex = raw.bytes.map { String(format: "%02X", $0) }.joined(separator: " ")
+            print("  \(display.name): no DDC reply (write 0x\(String(UInt32(bitPattern: raw.write), radix: 16)), read 0x\(String(UInt32(bitPattern: raw.read), radix: 16)), bytes \(hex))")
+        }
+    }
     exit(0)
 }
 let includeKeyboardPage = args.contains("--all")

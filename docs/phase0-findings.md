@@ -39,3 +39,14 @@ Not recorded yet.
 - [x] Hold + turn? No turn events while pressed. Dropped.
 - [ ] VID:PID over the cable.
 - [ ] Risk: a real Apple Aluminum keyboard also uses 05AC:024F. Pairing may need the product name too.
+
+## Displays (DDC/CI)
+
+Mac mini M4 (Mac16,10) with two BenQ monitors, both found as external `DCPAVServiceProxy` services.
+
+| Monitor | DDC result |
+|---|---|
+| BenQ GW2790 (27", primary) | Brightness control works from Brightness mode once DDC/CI is on in the monitor's menu |
+| BenQ GW2490 (24", portrait) | No control. Before DDC/CI was enabled, one display's I²C write failed with 0xE0114102, likely the Mac mini's HDMI port |
+
+`make probe` with `--ddc` prints each display's brightness reply, or the raw bytes when there is none.

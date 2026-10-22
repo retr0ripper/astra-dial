@@ -5,6 +5,10 @@ public enum MediaKey: Int, Sendable {
     case soundUp = 0
     case soundDown = 1
     case mute = 7
+    case play = 16
+
+    /// The keys the knob sends. Only these are ever matched or claimed.
+    public var isKnobKey: Bool { self != .play }
 
     public init?(hidUsage usage: UInt32) {
         switch usage {
