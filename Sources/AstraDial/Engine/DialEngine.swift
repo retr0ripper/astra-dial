@@ -108,12 +108,12 @@ final class DialEngine {
         case .turn(let direction, _):
             wheel.turn(direction)
             wheelDidChange()
-            return "Wheel → \(wheelModes[wheel.highlighted].title)"
+            return "Wheel → \(settings.title(for: wheelModes[wheel.highlighted]))"
         case .press:
             guard let slot = wheel.select() else { return "" }
             wheelDidChange()
             choose(wheelModes[slot])
-            return "Wheel → selected \(wheelModes[slot].title)"
+            return "Wheel → selected \(settings.title(for: wheelModes[slot]))"
         case .doublePress:
             closeWheel()
             return "Wheel closed"

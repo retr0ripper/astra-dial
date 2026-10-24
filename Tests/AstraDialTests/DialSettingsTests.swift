@@ -3,19 +3,11 @@ import Foundation
 import Testing
 @testable import AstraDial
 
-/// Each test gets its own UserDefaults suite, removed afterwards.
-private func withDefaults(_ body: (UserDefaults) throws -> Void) rethrows {
-    let name = "AstraDialTests.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: name)!
-    defer { defaults.removePersistentDomain(forName: name) }
-    try body(defaults)
-}
-
 @Suite struct DialSettingsTests {
-    @Test func freshSettingsLeaveCustomOffTheWheel() {
+    @Test func freshSettingsLeaveCustomModesOffTheWheel() {
         withDefaults { defaults in
             let settings = DialSettings(defaults: defaults)
-            #expect(!settings.enabledModes.contains(.custom))
+            for mode in DialMode.customModes { #expect(!settings.enabledModes.contains(mode)) }
             #expect(settings.enabledModes.contains(.scroll))
         }
     }
@@ -25,13 +17,18 @@ private func withDefaults(_ body: (UserDefaults) throws -> Void) rethrows {
             let settings = DialSettings(defaults: defaults)
             settings.scrollSpeed = 96
             settings.disabledModes = [.zoom]
-            settings.customForward = KeyShortcut(keyCode: 0x1E, modifiers: [.command], keyLabel: "]")
+            settings.customSets[.custom2] = CustomShortcuts(
+                name: "Video", forward: KeyShortcut(keyCode: 0x25, modifiers: [], keyLabel: "l")
+            )
+            settings.acceleratedModes = [.tabs]
             settings.checkForUpdates = false
 
             let reloaded = DialSettings(defaults: defaults)
             #expect(reloaded.scrollSpeed == 96)
             #expect(reloaded.disabledModes == [.zoom])
-            #expect(reloaded.customForward?.display == "⌘]")
+            #expect(reloaded.customSets[.custom2]?.forward?.display == "L")
+            #expect(reloaded.title(for: .custom2) == "Video")
+            #expect(reloaded.acceleratedModes == [.tabs])
             #expect(!reloaded.checkForUpdates)
         }
     }
@@ -43,8 +40,8 @@ private func withDefaults(_ body: (UserDefaults) throws -> Void) rethrows {
 
             let settings = DialSettings(defaults: defaults)
             #expect(settings.modeOrder.first == .scroll)
-            #expect(settings.modeOrder.last == .custom)
-            #expect(settings.disabledModes == [.custom])
+            #expect(Array(settings.modeOrder.suffix(3)) == DialMode.customModes)
+            #expect(settings.disabledModes == Set(DialMode.customModes))
         }
     }
 
@@ -53,6 +50,45 @@ private func withDefaults(_ body: (UserDefaults) throws -> Void) rethrows {
             let settings = DialSettings(defaults: defaults)
             settings.disabledModes.remove(.custom)
             #expect(DialSettings(defaults: defaults).enabledModes.contains(.custom))
+        }
+    }
+
+    @Test func customShortcutsFrom020MoveToTheFirstCustomMode() {
+        withDefaults { defaults in
+            let stored = #"{"modeOrder":["volume","custom"],"disabledModes":[],"customForward":{"keyCode":30,"modifiers":8,"keyLabel":"]"},"customPress":{"keyCode":17,"modifiers":8,"keyLabel":"t"}}"#
+            defaults.set(Data(stored.utf8), forKey: "settings")
+
+            let settings = DialSettings(defaults: defaults)
+            #expect(settings.customSets[.custom]?.forward?.display == "⌘]")
+            #expect(settings.customSets[.custom]?.back == nil)
+            #expect(settings.customSets[.custom]?.press?.display == "⌘T")
+            #expect(settings.enabledModes.contains(.custom))
+            #expect(!settings.enabledModes.contains(.custom2))
+        }
+    }
+
+    @Test func spinAccelerationOffFrom020TurnsOffEveryMode() {
+        withDefaults { defaults in
+            defaults.set(Data(#"{"spinAcceleration":false}"#.utf8), forKey: "settings")
+            #expect(DialSettings(defaults: defaults).acceleratedModes.isEmpty)
+        }
+    }
+
+    @Test func accelerationDefaultsToScrollAndBrightness() {
+        withDefaults { defaults in
+            #expect(DialSettings(defaults: defaults).acceleratedModes == [.scroll, .brightness])
+        }
+    }
+
+    @Test func titleFallsBackToTheModeTitle() {
+        withDefaults { defaults in
+            let settings = DialSettings(defaults: defaults)
+            #expect(settings.title(for: .custom3) == "Custom 3")
+            settings.customSets[.custom3] = CustomShortcuts(name: "  ")
+            #expect(settings.title(for: .custom3) == "Custom 3")
+            settings.customSets[.custom3] = CustomShortcuts(name: " Figma ")
+            #expect(settings.title(for: .custom3) == "Figma")
+            #expect(settings.title(for: .tabs) == "Tabs")
         }
     }
 

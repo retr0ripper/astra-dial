@@ -25,6 +25,8 @@ struct SettingsView: View {
     let model: AppModel
     @Bindable var settings: DialSettings
     let brightness: BrightnessController
+    /// The Custom mode being edited.
+    @State private var customMode: DialMode = .custom
 
     init(model: AppModel) {
         self.model = model
@@ -46,7 +48,7 @@ struct SettingsView: View {
             } header: {
                 Text("Modes")
             } footer: {
-                Text("Drag to reorder the wheel. Turned-off modes are left off the wheel. Volume always stays on: long-press returns to it.")
+                Text("Drag to reorder the wheel. Turned-off modes are left off the wheel. Volume always stays on: long-press returns to it. With the hare on, spinning faster moves further: Scroll and Brightness move more per click, other modes repeat their step.")
             }
 
             Section {
@@ -64,20 +66,30 @@ struct SettingsView: View {
             }
 
             Section {
-                LabeledContent("Turn clockwise") { ShortcutRecorder(shortcut: $settings.customForward) }
-                LabeledContent("Turn counter-clockwise") { ShortcutRecorder(shortcut: $settings.customBack) }
-                LabeledContent("Press") { ShortcutRecorder(shortcut: $settings.customPress) }
+                Picker("Custom mode", selection: $customMode) {
+                    ForEach(DialMode.customModes) { mode in
+                        Text(settings.title(for: mode)).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                Group {
+                    TextField("Name", text: custom(\.name), prompt: Text(customMode.title))
+                    LabeledContent("Turn clockwise") { ShortcutRecorder(shortcut: custom(\.forward)) }
+                    LabeledContent("Turn counter-clockwise") { ShortcutRecorder(shortcut: custom(\.back)) }
+                    LabeledContent("Press") { ShortcutRecorder(shortcut: custom(\.press)) }
+                }
+                .id(customMode)
             } header: {
-                Text("Custom mode")
+                Text("Custom modes")
             } footer: {
-                Text("Any shortcut, sent to the frontmost app once per click. Press uses this shortcut when its press action is Mode default. Esc cancels recording.")
+                Text("Any shortcut, sent to the frontmost app once per click. Press uses its shortcut when the mode's press action is Mode default. Give a Custom mode to an app under App modes for per-app shortcuts. Esc cancels recording.")
             }
 
             Section("Feel") {
                 LabeledSlider(title: "Scroll speed", value: $settings.scrollSpeed, range: 16...120, step: 8) {
                     "\(Int($0)) px per click"
                 }
-                Toggle("Spin faster to move further", isOn: $settings.spinAcceleration)
                 LabeledSlider(title: "Brightness step", value: $settings.brightnessStep, range: 1...20, step: 1) {
                     "\(Int($0))% per click"
                 }
@@ -121,6 +133,19 @@ struct SettingsView: View {
         // The form scrolls inside a fixed height so the window fits a 1080p screen.
         .frame(width: 560, height: 720)
         .onAppear { brightness.scan() }
+    }
+
+    /// A field of the Custom mode being edited.
+    private func custom<Value>(_ field: WritableKeyPath<CustomShortcuts, Value>) -> Binding<Value> {
+        let mode = customMode
+        return Binding(
+            get: { (settings.customSets[mode] ?? CustomShortcuts())[keyPath: field] },
+            set: { value in
+                var set = settings.customSets[mode] ?? CustomShortcuts()
+                set[keyPath: field] = value
+                settings.customSets[mode] = set
+            }
+        )
     }
 
     private var displaySummary: String {
@@ -178,12 +203,19 @@ private struct ModeRow: View {
             Image(systemName: mode.symbol)
                 .frame(width: 20)
             VStack(alignment: .leading, spacing: 0) {
-                Text(mode.title)
+                Text(settings.title(for: mode))
                 Text(mode.turnHint)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            Toggle(isOn: accelerated) {
+                Image(systemName: "hare")
+            }
+            .toggleStyle(.button)
+            .help("Spin faster to move further")
+            .opacity(mode.canAccelerate ? 1 : 0)
+            .disabled(!mode.canAccelerate)
             Picker("Press", selection: pressAction) {
                 ForEach(PressAction.allCases) { action in
                     Text(action == .modeDefault ? "Default: \(mode.defaultPressHint)" : action.title).tag(action)
@@ -199,6 +231,15 @@ private struct ModeRow: View {
             get: { !settings.disabledModes.contains(mode) },
             set: { isOn in
                 if isOn { settings.disabledModes.remove(mode) } else { settings.disabledModes.insert(mode) }
+            }
+        )
+    }
+
+    private var accelerated: Binding<Bool> {
+        Binding(
+            get: { settings.acceleratedModes.contains(mode) },
+            set: { isOn in
+                if isOn { settings.acceleratedModes.insert(mode) } else { settings.acceleratedModes.remove(mode) }
             }
         )
     }
@@ -224,7 +265,7 @@ private struct ProfileRow: View {
             Spacer()
             Picker("Mode", selection: mode) {
                 ForEach(DialMode.allCases) { mode in
-                    Label(mode.title, systemImage: mode.symbol).tag(mode)
+                    Label(settings.title(for: mode), systemImage: mode.symbol).tag(mode)
                 }
             }
             .labelsHidden()
@@ -238,7 +279,7 @@ private struct ProfileRow: View {
             .help("Remove \(profile.name)")
         }
         .opacity(settings.enabledModes.contains(profile.mode) ? 1 : 0.5)
-        .help(settings.enabledModes.contains(profile.mode) ? "" : "\(profile.mode.title) is turned off in Modes, so this profile is skipped")
+        .help(settings.enabledModes.contains(profile.mode) ? "" : "\(settings.title(for: profile.mode)) is turned off in Modes, so this profile is skipped")
     }
 
     private var mode: Binding<DialMode> {

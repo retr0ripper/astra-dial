@@ -11,6 +11,10 @@ final class HUDState {
     /// Unwrapped highlight position, so the highlight animates the short way across 12 o'clock.
     var cursor = 0
     var toast: Toast?
+    /// Mode names, including the user's names for Custom modes.
+    var titles: [DialMode: String] = [:]
+
+    func title(for mode: DialMode) -> String { titles[mode] ?? mode.title }
 
     struct Toast: Equatable {
         let mode: DialMode

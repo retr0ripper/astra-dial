@@ -25,8 +25,7 @@ final class ModeRunner {
 
     /// Performs one detent. Returns a log description.
     func turn(_ mode: DialMode, direction: Int, detentsPerSecond: Double) -> String {
-        let forward = direction > 0
-        let boost = settings.spinAcceleration ? Self.acceleration(detentsPerSecond) : 1
+        let boost = boost(mode, detentsPerSecond: detentsPerSecond)
         switch mode {
         case .volume:
             return "volume (macOS)"
@@ -38,11 +37,30 @@ final class ModeRunner {
             let pixels = Int32(Double(direction) * settings.scrollSpeed) * Int32(boost)
             ScrollSender.scroll(pixels: pixels)
             return "scroll \(pixels)px"
+        default:
+            // Shortcut modes repeat their step when spun fast.
+            var description = ""
+            for _ in 0..<boost { description = step(mode, forward: direction > 0) }
+            return boost > 1 ? "\(description) ×\(boost)" : description
+        }
+    }
+
+    /// How many detents a turn counts as: more for fast spins in accelerated modes.
+    func boost(_ mode: DialMode, detentsPerSecond: Double) -> Int {
+        guard mode.canAccelerate, settings.acceleratedModes.contains(mode) else { return 1 }
+        return Self.acceleration(detentsPerSecond)
+    }
+
+    /// One step of a shortcut mode.
+    private func step(_ mode: DialMode, forward: Bool) -> String {
+        switch mode {
+        case .volume, .brightness, .scroll:
+            return ""
         case .zoom:
             KeySender.press(forward ? .equal : .minus, .maskCommand)
             return forward ? "zoom in" : "zoom out"
         case .apps:
-            appSwitcher.step(direction)
+            appSwitcher.step(forward ? 1 : -1)
             return forward ? "next app" : "previous app"
         case .tabs:
             KeySender.press(.tab, forward ? .maskControl : [.maskControl, .maskShift])
@@ -59,10 +77,9 @@ final class ModeRunner {
         case .slides:
             KeySender.press(forward ? .right : .left)
             return forward ? "next slide" : "previous slide"
-        case .custom:
-            guard let shortcut = forward ? settings.customForward : settings.customBack else {
-                return "no shortcut set"
-            }
+        case .custom, .custom2, .custom3:
+            let set = settings.customSets[mode]
+            guard let shortcut = forward ? set?.forward : set?.back else { return "no shortcut set" }
             KeySender.press(shortcut)
             return shortcut.display
         }
@@ -84,15 +101,16 @@ final class ModeRunner {
     func pressHint(_ mode: DialMode) -> String {
         let action = settings.pressAction(for: mode)
         guard action == .modeDefault else { return action.title.lowercased() }
-        if mode == .custom { return settings.customPress?.display ?? "nothing set" }
+        if mode.isCustom { return settings.customSets[mode]?.press?.display ?? "nothing set" }
         return mode.defaultPressHint
     }
 
     /// The turn hint shown for a mode; Custom shows its recorded shortcuts.
     func turnHint(_ mode: DialMode) -> String {
-        guard mode == .custom else { return mode.turnHint }
-        if settings.customForward == nil, settings.customBack == nil { return "no shortcuts set" }
-        return "\(settings.customForward?.display ?? "–") / \(settings.customBack?.display ?? "–")"
+        guard mode.isCustom else { return mode.turnHint }
+        let set = settings.customSets[mode]
+        if set?.forward == nil, set?.back == nil { return "no shortcuts set" }
+        return "\(set?.forward?.display ?? "–") / \(set?.back?.display ?? "–")"
     }
 
     private func pressDefault(_ mode: DialMode) -> String {
@@ -107,8 +125,8 @@ final class ModeRunner {
         case .undo: KeySender.press(.s, .maskCommand)
         case .scrub: KeySender.press(.space)
         case .slides: KeySender.press(.b)
-        case .custom:
-            guard let shortcut = settings.customPress else { return "no shortcut set" }
+        case .custom, .custom2, .custom3:
+            guard let shortcut = settings.customSets[mode]?.press else { return "no shortcut set" }
             KeySender.press(shortcut)
             return shortcut.display
         }

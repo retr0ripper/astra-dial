@@ -10,7 +10,7 @@ struct HUDView: View {
                 WheelView(state: state)
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
             } else if let toast = state.toast {
-                ToastView(toast: toast)
+                ToastView(toast: toast, title: state.title(for: toast.mode))
                     .transition(.scale(scale: 0.9).combined(with: .opacity))
             }
         }
@@ -64,7 +64,7 @@ private struct WheelView: View {
             }
 
             VStack(spacing: 3) {
-                Text(highlighted.title)
+                Text(state.title(for: highlighted))
                     .font(.system(size: 19, weight: .semibold))
                     .contentTransition(.opacity)
                 Text(highlighted == state.activeMode ? "Current mode" : "Press to switch")
@@ -80,6 +80,7 @@ private struct WheelView: View {
 
 private struct ToastView: View {
     let toast: HUDState.Toast
+    let title: String
 
     var body: some View {
         VStack(spacing: 8) {
@@ -91,7 +92,7 @@ private struct ToastView: View {
                     .font(.system(size: 13, weight: .semibold).monospacedDigit())
                     .foregroundStyle(.secondary)
             } else {
-                Text(toast.mode.title)
+                Text(title)
                     .font(.system(size: 15, weight: .semibold))
             }
         }

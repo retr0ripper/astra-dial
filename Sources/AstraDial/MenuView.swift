@@ -94,7 +94,7 @@ struct MenuView: View {
 
                 Picker("Mode", selection: Binding(get: { model.mode }, set: { model.selectMode($0) })) {
                     ForEach(model.settings.enabledModes) { mode in
-                        Label(mode.title, systemImage: mode.symbol).tag(mode)
+                        Label(model.settings.title(for: mode), systemImage: mode.symbol).tag(mode)
                     }
                 }
                 .pickerStyle(.menu)
@@ -105,7 +105,7 @@ struct MenuView: View {
                     .foregroundStyle(.secondary)
 
                 HStack(spacing: 16) {
-                    Readout(label: "Mode", value: model.mode.title)
+                    Readout(label: "Mode", value: model.settings.title(for: model.mode))
                     Readout(label: "Position", value: "\(model.position)")
                     Readout(label: "Button", value: model.isPressed ? "Down" : "Up")
                 }

@@ -12,6 +12,8 @@ enum DialMode: String, CaseIterable, Identifiable, Codable {
     case scrub
     case slides
     case custom
+    case custom2
+    case custom3
 
     var id: String { rawValue }
 
@@ -28,6 +30,8 @@ enum DialMode: String, CaseIterable, Identifiable, Codable {
         case .scrub: "Scrub"
         case .slides: "Slides"
         case .custom: "Custom"
+        case .custom2: "Custom 2"
+        case .custom3: "Custom 3"
         }
     }
 
@@ -44,12 +48,22 @@ enum DialMode: String, CaseIterable, Identifiable, Codable {
         case .scrub: "film"
         case .slides: "play.rectangle"
         case .custom: "keyboard"
+        case .custom2: "keyboard.badge.ellipsis"
+        case .custom3: "keyboard.chevron.compact.down"
         }
     }
+
+    /// Modes that send shortcuts recorded in Settings.
+    static let customModes: [DialMode] = [.custom, .custom2, .custom3]
+
+    var isCustom: Bool { Self.customModes.contains(self) }
 
     /// Whether knob turns are taken from macOS in this mode. Volume lets them through so
     /// macOS changes the volume and shows its own HUD.
     var claimsTurns: Bool { self != .volume }
+
+    /// Whether faster spins can move further. Volume's turns belong to macOS.
+    var canAccelerate: Bool { self != .volume }
 
     /// What a turn does, for hints in the menu and Settings.
     var turnHint: String {
@@ -64,7 +78,7 @@ enum DialMode: String, CaseIterable, Identifiable, Codable {
         case .undo: "⇧⌘Z / ⌘Z"
         case .scrub: "→ / ←"
         case .slides: "next / previous slide"
-        case .custom: "your shortcuts"
+        case .custom, .custom2, .custom3: "your shortcuts"
         }
     }
 
@@ -81,7 +95,7 @@ enum DialMode: String, CaseIterable, Identifiable, Codable {
         case .undo: "save ⌘S"
         case .scrub: "play/pause (space)"
         case .slides: "black screen (B)"
-        case .custom: "your press shortcut"
+        case .custom, .custom2, .custom3: "your press shortcut"
         }
     }
 }

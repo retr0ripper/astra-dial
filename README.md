@@ -10,9 +10,11 @@ are unaffected.
 
 Double-press the knob to open the mode wheel, turn to pick a mode, press to switch. Modes:
 Volume, Brightness (external displays over DDC/CI), Scroll, Zoom, Apps (⌘Tab), Tabs, Desktops,
-Undo, Scrub, Slides and Custom (your own shortcuts for turn and press). Long-press returns to
-Volume. Settings reorders and hides modes, sets a press action per mode, records Custom's
-shortcuts, tunes speeds and timings, and assigns modes to apps so they switch automatically.
+Undo, Scrub, Slides, and three Custom modes you name and fill with your own shortcuts for turn
+and press. Long-press returns to Volume. Settings reorders and hides modes, sets a press action
+and spin acceleration per mode, records the Custom modes' shortcuts, tunes speeds and timings,
+and assigns modes to apps so they switch automatically (a Custom mode per app gives per-app
+shortcuts).
 
 ## Install
 

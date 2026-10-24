@@ -11,6 +11,14 @@ struct AppProfile: Codable, Hashable, Identifiable {
     var id: String { bundleID }
 }
 
+/// A Custom mode's name and shortcuts: clockwise, counter-clockwise, and its default press.
+struct CustomShortcuts: Codable, Hashable {
+    var name = ""
+    var forward: KeyShortcut?
+    var back: KeyShortcut?
+    var press: KeyShortcut?
+}
+
 /// User settings, saved to UserDefaults as one JSON blob on every change.
 @Observable
 final class DialSettings {
@@ -21,7 +29,8 @@ final class DialSettings {
 
     /// Pixels scrolled per detent before acceleration.
     var scrollSpeed: Double = 48 { didSet { changed() } }
-    var spinAcceleration = true { didSet { changed() } }
+    /// Modes where spinning faster moves further per detent.
+    var acceleratedModes: Set<DialMode> = DialSettings.acceleratedByDefault { didSet { changed() } }
     /// Brightness change per detent, in percent.
     var brightnessStep: Double = 5 { didSet { changed() } }
     var doublePressWindow: Double = 0.3 { didSet { changed() } }
@@ -32,10 +41,8 @@ final class DialSettings {
     var autoProfiles = true { didSet { changed() } }
     var appProfiles: [AppProfile] = [] { didSet { changed() } }
 
-    /// Custom mode's shortcuts: clockwise, counter-clockwise, and its default press.
-    var customForward: KeyShortcut? { didSet { changed() } }
-    var customBack: KeyShortcut? { didSet { changed() } }
-    var customPress: KeyShortcut? { didSet { changed() } }
+    /// The Custom modes' names and shortcuts. A missing entry has none recorded.
+    var customSets: [DialMode: CustomShortcuts] = [:] { didSet { changed() } }
 
     /// Look for a newer release on GitHub once a day.
     var checkForUpdates = true { didSet { changed() } }
@@ -46,8 +53,9 @@ final class DialSettings {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var isLoading = false
     private static let key = "settings"
-    /// Custom does nothing until its shortcuts are recorded, so it starts off the wheel.
-    static let offByDefault: Set<DialMode> = [.custom]
+    /// Custom modes do nothing until their shortcuts are recorded, so they start off the wheel.
+    static let offByDefault = Set(DialMode.customModes)
+    static let acceleratedByDefault: Set<DialMode> = [.scroll, .brightness]
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -57,6 +65,12 @@ final class DialSettings {
     /// The wheel's modes. Volume is always included: long-press falls back to it.
     var enabledModes: [DialMode] {
         modeOrder.filter { $0 == .volume || !disabledModes.contains($0) }
+    }
+
+    /// A mode's name: the user's name for a Custom mode, otherwise the built-in title.
+    func title(for mode: DialMode) -> String {
+        let name = customSets[mode]?.name.trimmingCharacters(in: .whitespaces) ?? ""
+        return name.isEmpty ? mode.title : name
     }
 
     func pressAction(for mode: DialMode) -> PressAction {
@@ -94,31 +108,41 @@ final class DialSettings {
     /// build still load after new fields are added.
     private struct Stored: Codable {
         var modeOrder: [String] = DialMode.allCases.map(\.rawValue)
-        var disabledModes: [String] = DialSettings.offByDefault.map(\.rawValue)
+        var disabledModes: [String] = DialSettings.offByDefault.map(\.rawValue).sorted()
         var pressActions: [String: String] = [:]
         var scrollSpeed: Double = 48
-        var spinAcceleration = true
+        var acceleratedModes: [String] = DialSettings.acceleratedByDefault.map(\.rawValue).sorted()
         var brightnessStep: Double = 5
         var doublePressWindow: Double = 0.3
         var longPressDuration: Double = 0.6
         var wheelTimeout: Double = 5
         var autoProfiles = true
         var appProfiles: [AppProfile] = []
-        var customForward: KeyShortcut?
-        var customBack: KeyShortcut?
-        var customPress: KeyShortcut?
+        var customSets: [String: CustomShortcuts] = [:]
         var checkForUpdates = true
 
         init() {}
 
+        /// Fields that 0.2.0 saved and later builds read only to migrate.
+        private enum LegacyKeys: String, CodingKey {
+            case spinAcceleration, customForward, customBack, customPress
+        }
+
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
+            let legacy = try decoder.container(keyedBy: LegacyKeys.self)
             let d = Stored()
             modeOrder = try c.decodeIfPresent([String].self, forKey: .modeOrder) ?? d.modeOrder
             disabledModes = try c.decodeIfPresent([String].self, forKey: .disabledModes) ?? d.disabledModes
             pressActions = try c.decodeIfPresent([String: String].self, forKey: .pressActions) ?? d.pressActions
             scrollSpeed = try c.decodeIfPresent(Double.self, forKey: .scrollSpeed) ?? d.scrollSpeed
-            spinAcceleration = try c.decodeIfPresent(Bool.self, forKey: .spinAcceleration) ?? d.spinAcceleration
+            if let modes = try c.decodeIfPresent([String].self, forKey: .acceleratedModes) {
+                acceleratedModes = modes
+            } else {
+                // 0.2.0 had one switch for Scroll and Brightness.
+                let spin = try legacy.decodeIfPresent(Bool.self, forKey: .spinAcceleration) ?? true
+                acceleratedModes = spin ? d.acceleratedModes : []
+            }
             brightnessStep = try c.decodeIfPresent(Double.self, forKey: .brightnessStep) ?? d.brightnessStep
             doublePressWindow = try c.decodeIfPresent(Double.self, forKey: .doublePressWindow) ?? d.doublePressWindow
             longPressDuration = try c.decodeIfPresent(Double.self, forKey: .longPressDuration) ?? d.longPressDuration
@@ -127,9 +151,17 @@ final class DialSettings {
             // A profile naming a mode this build doesn't know is dropped rather than failing the load.
             appProfiles = (try? c.decodeIfPresent([FailableProfile].self, forKey: .appProfiles))?
                 .compactMap(\.profile) ?? d.appProfiles
-            customForward = try? c.decodeIfPresent(KeyShortcut.self, forKey: .customForward)
-            customBack = try? c.decodeIfPresent(KeyShortcut.self, forKey: .customBack)
-            customPress = try? c.decodeIfPresent(KeyShortcut.self, forKey: .customPress)
+            if let sets = try? c.decodeIfPresent([String: CustomShortcuts].self, forKey: .customSets) {
+                customSets = sets
+            } else {
+                // 0.2.0 had a single Custom mode with top-level shortcuts.
+                let old = CustomShortcuts(
+                    forward: try? legacy.decodeIfPresent(KeyShortcut.self, forKey: .customForward),
+                    back: try? legacy.decodeIfPresent(KeyShortcut.self, forKey: .customBack),
+                    press: try? legacy.decodeIfPresent(KeyShortcut.self, forKey: .customPress)
+                )
+                customSets = old == CustomShortcuts() ? [:] : [DialMode.custom.rawValue: old]
+            }
             checkForUpdates = try c.decodeIfPresent(Bool.self, forKey: .checkForUpdates) ?? d.checkForUpdates
         }
     }
@@ -146,16 +178,14 @@ final class DialSettings {
         stored.disabledModes = disabledModes.map(\.rawValue).sorted()
         stored.pressActions = Dictionary(uniqueKeysWithValues: pressActions.map { ($0.key.rawValue, $0.value.rawValue) })
         stored.scrollSpeed = scrollSpeed
-        stored.spinAcceleration = spinAcceleration
+        stored.acceleratedModes = acceleratedModes.map(\.rawValue).sorted()
         stored.brightnessStep = brightnessStep
         stored.doublePressWindow = doublePressWindow
         stored.longPressDuration = longPressDuration
         stored.wheelTimeout = wheelTimeout
         stored.autoProfiles = autoProfiles
         stored.appProfiles = appProfiles
-        stored.customForward = customForward
-        stored.customBack = customBack
-        stored.customPress = customPress
+        stored.customSets = Dictionary(uniqueKeysWithValues: customSets.map { ($0.key.rawValue, $0.value) })
         stored.checkForUpdates = checkForUpdates
         if let data = try? JSONEncoder().encode(stored) { defaults.set(data, forKey: Self.key) }
         onChange?()
@@ -170,7 +200,8 @@ final class DialSettings {
     private func apply(_ stored: Stored) {
         isLoading = true
         defer { isLoading = false }
-        // Unknown modes are dropped; modes added in later versions go at the end.
+        // Unknown modes are dropped; modes added in later versions go at the end, and those
+        // that start off stay off.
         var order = stored.modeOrder.compactMap(DialMode.init(rawValue:))
         let added = DialMode.allCases.filter { !order.contains($0) }
         order += added
@@ -182,16 +213,17 @@ final class DialSettings {
             return (mode, action)
         })
         scrollSpeed = stored.scrollSpeed
-        spinAcceleration = stored.spinAcceleration
+        acceleratedModes = Set(stored.acceleratedModes.compactMap(DialMode.init(rawValue:)))
         brightnessStep = stored.brightnessStep
         doublePressWindow = stored.doublePressWindow
         longPressDuration = stored.longPressDuration
         wheelTimeout = stored.wheelTimeout
         autoProfiles = stored.autoProfiles
         appProfiles = stored.appProfiles
-        customForward = stored.customForward
-        customBack = stored.customBack
-        customPress = stored.customPress
+        customSets = Dictionary(uniqueKeysWithValues: stored.customSets.compactMap { key, value in
+            guard let mode = DialMode(rawValue: key), mode.isCustom else { return nil }
+            return (mode, value)
+        })
         checkForUpdates = stored.checkForUpdates
     }
 }

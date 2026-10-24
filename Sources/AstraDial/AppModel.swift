@@ -87,8 +87,9 @@ final class AppModel {
         }
         engine.onModeChosen = { [weak self] in self?.hud.showToast($0) }
         engine.onAutoMode = { [weak self] mode, appName in
-            self?.hud.showToast(mode)
-            self?.append("\(appName) → \(mode.title) mode (profile)")
+            guard let self else { return }
+            hud.showToast(mode)
+            append("\(appName) → \(settings.title(for: mode)) mode (profile)")
         }
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
@@ -133,7 +134,7 @@ final class AppModel {
         if !isConnected { return "Keyboard not connected" }
         if !takeoverEnabled { return "Knob connected · controls volume only" }
         if !isTakeoverActive { return "Knob connected · needs Accessibility for modes" }
-        return "\(mode.title) mode · double-press for the wheel"
+        return "\(settings.title(for: mode)) mode · double-press for the wheel"
     }
 
     // MARK: Actions
@@ -151,7 +152,7 @@ final class AppModel {
     func selectMode(_ newMode: DialMode) {
         guard isTakeoverActive else { return }
         engine.userChose(newMode)
-        append("Switched to \(newMode.title) mode")
+        append("Switched to \(settings.title(for: newMode)) mode")
     }
 
     func startPairing() {
@@ -290,6 +291,7 @@ final class AppModel {
     }
 
     private func applySettings() {
+        hud.state.titles = Dictionary(uniqueKeysWithValues: DialMode.allCases.map { ($0, settings.title(for: $0)) })
         if settings.checkForUpdates != updatesAutomatic {
             updatesAutomatic = settings.checkForUpdates
             updates.setAutomatic(settings.checkForUpdates)
