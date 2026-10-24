@@ -1,6 +1,10 @@
 import Foundation
 import IOKit
 
+// DDC/CI goes through IOAVService, a private API, so the App Store build leaves it out and
+// gets the stub at the end of this file instead.
+#if !APP_STORE
+
 // Private IOKit calls for I²C over DisplayPort/HDMI on Apple Silicon (DCP). They're exported
 // by IOKit.framework and used by MonitorControl and m1ddc; there's no public equivalent.
 @_silgen_name("IOAVServiceCreateWithService")
@@ -94,3 +98,16 @@ public final class DDCDisplay: @unchecked Sendable {
         } == kIOReturnSuccess
     }
 }
+
+#else
+
+/// The App Store build's stand-in: no displays, so Brightness mode has nothing to drive.
+public final class DDCDisplay: @unchecked Sendable {
+    public let name = ""
+
+    public static func all() -> [DDCDisplay] { [] }
+    public func read(_ code: UInt8, attempts: Int = 3) -> DDCPacket.Reply? { nil }
+    public func readRaw(_ code: UInt8) -> (write: IOReturn, read: IOReturn, bytes: [UInt8]) { (kIOReturnUnsupported, kIOReturnUnsupported, []) }
+    public func set(_ code: UInt8, value: UInt16) -> Bool { false }
+}
+#endif

@@ -16,5 +16,7 @@ jobs:
         run: swift build
       - name: Test
         run: swift test
+      - name: Test the App Store variant
+        run: swift test -Xswiftc -DAPP_STORE --scratch-path .build/appstore
       - name: Bundle (unsigned)
         run: SIGN_IDENTITY=- Scripts/bundle.sh

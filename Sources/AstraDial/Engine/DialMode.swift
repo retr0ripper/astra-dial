@@ -1,4 +1,4 @@
-/// The knob's modes. `allCases` is the default wheel order (clockwise from 12 o'clock);
+/// The knob's modes. `available` is the default wheel order (clockwise from 12 o'clock);
 /// users can reorder and hide modes in Settings.
 enum DialMode: String, CaseIterable, Identifiable, Codable {
     case volume
@@ -52,6 +52,16 @@ enum DialMode: String, CaseIterable, Identifiable, Codable {
         case .custom3: "keyboard.chevron.compact.down"
         }
     }
+
+    /// The modes this build offers, in default wheel order. The App Store build has no
+    /// Brightness: DDC/CI needs a private API.
+    static let available: [DialMode] = {
+        #if APP_STORE
+        allCases.filter { $0 != .brightness }
+        #else
+        allCases
+        #endif
+    }()
 
     /// Modes that send shortcuts recorded in Settings.
     static let customModes: [DialMode] = [.custom, .custom2, .custom3]

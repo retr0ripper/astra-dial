@@ -98,7 +98,7 @@ import Testing
             defaults.set(Data(stored.utf8), forKey: "settings")
 
             let settings = DialSettings(defaults: defaults)
-            #expect(Set(settings.modeOrder) == Set(DialMode.allCases))
+            #expect(Set(settings.modeOrder) == Set(DialMode.available))
             #expect(settings.appProfiles.map(\.bundleID) == ["b"])
         }
     }

@@ -5,6 +5,11 @@
 #   Scripts/bundle.sh --universal  arm64 + x86_64
 #   SANDBOX=1 Scripts/bundle.sh    "Astra Dial Sandbox": App Sandbox on, its own bundle ID, to test
 #                                  what works under Mac App Store rules
+#   APPSTORE=1 Scripts/bundle.sh   the Mac App Store variant: built with -DAPP_STORE (no
+#                                  Brightness, no update check), sandboxed. With
+#                                  PROVISIONING_PROFILE=path it embeds the profile and signs with
+#                                  Apple Distribution, ready for Scripts/appstore.sh to package;
+#                                  without, it signs like a dev build so it can be run locally.
 #
 # Signing: uses a Developer ID Application identity if the keychain has one, else
 # "Astra Dial Local Signing" if Scripts/create-signing-cert.sh has created it. macOS ties
@@ -19,11 +24,29 @@ cd "$(dirname "$0")/.."
 APP_NAME="Astra Dial"
 BUNDLE_ID="${BUNDLE_ID:-com.astradial.AstraDial}"
 ENTITLEMENTS=()
+SWIFT_FLAGS=()
+PROFILE="${PROVISIONING_PROFILE:-}"
 if [[ "${SANDBOX:-}" == 1 ]]; then
   # A separate app, so its permissions and settings don't touch the regular build's.
   APP_NAME="Astra Dial Sandbox"
   BUNDLE_ID="$BUNDLE_ID.sandbox"
   ENTITLEMENTS=(--entitlements packaging/sandbox.entitlements)
+elif [[ "${APPSTORE:-}" == 1 ]]; then
+  # Its own scratch path, so switching variants doesn't rebuild everything.
+  SWIFT_FLAGS=(-Xswiftc -DAPP_STORE --scratch-path .build/appstore)
+  mkdir -p build
+  cp packaging/appstore.entitlements build/appstore.entitlements
+  if [[ -n "$PROFILE" ]]; then
+    # A provisioning profile needs the app and team identifiers it was made for.
+    TEAM_ID="$(security cms -D -i "$PROFILE" | plutil -extract TeamIdentifier.0 raw -)"
+    plutil -insert com.apple.application-identifier -string "$TEAM_ID.$BUNDLE_ID" build/appstore.entitlements
+    plutil -insert com.apple.developer.team-identifier -string "$TEAM_ID" build/appstore.entitlements
+    if [[ -z "${SIGN_IDENTITY:-}" ]]; then
+      SIGN_IDENTITY="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Apple Distribution: [^"]*\)".*/\1/p' | head -1)"
+      [[ -n "$SIGN_IDENTITY" ]] || { echo "error: no Apple Distribution certificate in the keychain" >&2; exit 1; }
+    fi
+  fi
+  ENTITLEMENTS=(--entitlements build/appstore.entitlements)
 fi
 VERSION="${VERSION:-$(cat VERSION)}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(git rev-list --count HEAD 2>/dev/null || echo 1)}"
@@ -46,14 +69,16 @@ if [[ "${1:-}" == "--universal" ]]; then
   ARCH_FLAGS=(--arch arm64 --arch x86_64)
 fi
 
-swift build -c release --product AstraDial "${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"}"
-BIN_DIR="$(swift build -c release --product AstraDial "${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"}" --show-bin-path)"
+BUILD_FLAGS=(-c release --product AstraDial "${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"}" "${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"}")
+swift build "${BUILD_FLAGS[@]}"
+BIN_DIR="$(swift build "${BUILD_FLAGS[@]}" --show-bin-path)"
 
 APP="build/$APP_NAME.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/AstraDial" "$APP/Contents/MacOS/AstraDial"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+[[ -n "$PROFILE" ]] && cp "$PROFILE" "$APP/Contents/embedded.provisionprofile"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -69,10 +94,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>$BUILD_NUMBER</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
-  <key>NSHumanReadableCopyright</key><string>Astra Dial is not affiliated with Cosmic Byte.</string>
+  <key>NSHumanReadableCopyright</key><string>Copyright © $(date +%Y) Astra Dial</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
+  <key>ITSAppUsesNonExemptEncryption</key><false/>
 </dict>
 </plist>
 PLIST

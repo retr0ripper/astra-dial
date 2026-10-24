@@ -23,7 +23,7 @@ struct CustomShortcuts: Codable, Hashable {
 @Observable
 final class DialSettings {
     /// Every mode, in the user's wheel order. Hidden modes keep their place.
-    var modeOrder: [DialMode] = DialMode.allCases { didSet { changed() } }
+    var modeOrder: [DialMode] = DialMode.available { didSet { changed() } }
     var disabledModes: Set<DialMode> = DialSettings.offByDefault { didSet { changed() } }
     var pressActions: [DialMode: PressAction] = [:] { didSet { changed() } }
 
@@ -107,7 +107,7 @@ final class DialSettings {
     /// Every field falls back to its default when missing, so settings saved by an older
     /// build still load after new fields are added.
     private struct Stored: Codable {
-        var modeOrder: [String] = DialMode.allCases.map(\.rawValue)
+        var modeOrder: [String] = DialMode.available.map(\.rawValue)
         var disabledModes: [String] = DialSettings.offByDefault.map(\.rawValue).sorted()
         var pressActions: [String: String] = [:]
         var scrollSpeed: Double = 48
@@ -200,10 +200,10 @@ final class DialSettings {
     private func apply(_ stored: Stored) {
         isLoading = true
         defer { isLoading = false }
-        // Unknown modes are dropped; modes added in later versions go at the end, and those
+        // Unknown modes, and modes this build doesn't offer, are dropped; modes added in later versions go at the end, and those
         // that start off stay off.
-        var order = stored.modeOrder.compactMap(DialMode.init(rawValue:))
-        let added = DialMode.allCases.filter { !order.contains($0) }
+        var order = stored.modeOrder.compactMap(DialMode.init(rawValue:)).filter(DialMode.available.contains)
+        let added = DialMode.available.filter { !order.contains($0) }
         order += added
         modeOrder = order
         disabledModes = Set(stored.disabledModes.compactMap(DialMode.init(rawValue:)))

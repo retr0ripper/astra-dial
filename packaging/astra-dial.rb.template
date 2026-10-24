@@ -6,7 +6,7 @@ cask "astra-dial" do
 
   url "https://github.com/@GITHUB_REPO@/releases/download/v#{version}/AstraDial-#{version}.dmg"
   name "Astra Dial"
-  desc "Turns the Cosmic Byte Astra keyboard knob into a mode wheel"
+  desc "Turns a keyboard volume knob into a mode wheel"
   homepage "https://github.com/@GITHUB_REPO@"
 
   depends_on macos: :sonoma

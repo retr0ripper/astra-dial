@@ -12,6 +12,15 @@ final class UpdateChecker {
         let url: URL
     }
 
+    /// App Store builds update through the App Store and mustn't check on their own.
+    static let isSupported: Bool = {
+        #if APP_STORE
+        false
+        #else
+        true
+        #endif
+    }()
+
     static let repo = "retr0ripper/astra-dial"
     private static let interval: TimeInterval = 24 * 60 * 60
 
@@ -20,8 +29,10 @@ final class UpdateChecker {
     private(set) var lastError: String?
     private(set) var lastChecked: Date?
 
-    /// This build's version, or nil when running unbundled (`swift run`), which never checks.
-    let current = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String).flatMap(AppVersion.init)
+    /// This build's version, or nil when it never checks: unbundled (`swift run`) or App Store.
+    let current = isSupported
+        ? (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String).flatMap(AppVersion.init)
+        : nil
 
     @ObservationIgnored private var timer: Timer?
 

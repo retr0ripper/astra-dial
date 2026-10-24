@@ -38,13 +38,13 @@ struct MenuView: View {
         VStack(alignment: .leading, spacing: 8) {
             PermissionRow(
                 title: "Input Monitoring",
-                detail: "Read the knob",
+                detail: "Read the knob on the keyboard you pair",
                 granted: model.inputMonitoring == .granted,
                 action: model.requestInputMonitoring
             )
             PermissionRow(
                 title: "Accessibility",
-                detail: "Take the knob from macOS and send scrolls (needed for modes)",
+                detail: "Stop the knob changing the volume outside Volume mode, and send the scrolls and shortcuts modes perform",
                 granted: model.accessibilityTrusted,
                 action: model.requestAccessibility
             )

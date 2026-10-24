@@ -1,12 +1,13 @@
 # Astra Dial
 
-A macOS menu bar app that turns the volume knob on the Cosmic Byte CB-GK-33 Astra keyboard
-into a mode wheel, in the spirit of [Dial](https://github.com/athulrajt/dial) and
-[Orbit](https://github.com/harsha20599/orbit) for the CMF Buds Pro 2.
+A macOS menu bar app that turns your keyboard's volume knob into a mode wheel, in the spirit
+of [Dial](https://github.com/athulrajt/dial) and [Orbit](https://github.com/harsha20599/orbit)
+for the CMF Buds Pro 2. It works with any keyboard whose knob sends volume keys (Keychron and
+most other mechanical keyboards with a knob); it was built on a Cosmic Byte CB-GK-33 Astra.
 
-The knob sends standard HID media keys (Volume Up/Down per detent, Mute on press). Astra Dial
-reads them with IOHIDManager, only from the keyboard you pair, so other keyboards' volume keys
-are unaffected.
+A knob sends standard HID volume keys, one per detent, and usually Mute or Play/Pause on press.
+Astra Dial reads them with IOHIDManager, only from the keyboard you pair, so other keyboards'
+volume keys are unaffected. A knob without a press still works; pick modes from the menu.
 
 Double-press the knob to open the mode wheel, turn to pick a mode, press to switch. Modes:
 Volume, Brightness (external displays over DDC/CI), Scroll, Zoom, Apps (⌘Tab), Tabs, Desktops,
@@ -101,6 +102,20 @@ Macs until the user right-clicks → Open or runs
 `build/release/astra-dial.rb` is a Homebrew cask pointing at the GitHub release asset; copy it to
 `Casks/` in [retr0ripper/homebrew-tap](https://github.com/retr0ripper/homebrew-tap). Bump
 `VERSION` before each release so the in-app update check sees it. `make icon` re-renders `Resources/AppIcon.icns` from `Scripts/make-icon.swift`.
+
+### Mac App Store
+
+```sh
+make appstore-run   # the App Store variant, signed for local testing
+PROVISIONING_PROFILE=path/to/profile.provisionprofile make appstore
+```
+
+The App Store variant is built with `-DAPP_STORE`: sandboxed (`packaging/appstore.entitlements`),
+without Brightness mode (DDC/CI needs IOAVService, a private API) and without the update check.
+`Scripts/appstore.sh` refuses to package a build that links IOAVService or isn't sandboxed, then
+signs the app with Apple Distribution and the package with Mac Installer Distribution. Listing
+text and review notes are in `docs/appstore/listing.md`; the privacy policy is `docs/privacy.md`.
+`make test` runs the tests for both variants.
 
 ## Layout
 

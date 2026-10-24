@@ -90,8 +90,10 @@ struct SettingsView: View {
                 LabeledSlider(title: "Scroll speed", value: $settings.scrollSpeed, range: 16...120, step: 8) {
                     "\(Int($0)) px per click"
                 }
-                LabeledSlider(title: "Brightness step", value: $settings.brightnessStep, range: 1...20, step: 1) {
-                    "\(Int($0))% per click"
+                if DialMode.available.contains(.brightness) {
+                    LabeledSlider(title: "Brightness step", value: $settings.brightnessStep, range: 1...20, step: 1) {
+                        "\(Int($0))% per click"
+                    }
                 }
                 LabeledSlider(title: "Double-press window", value: $settings.doublePressWindow, range: 0.2...0.5, step: 0.05) {
                     "\(Int(($0 * 1000).rounded())) ms"
@@ -104,16 +106,18 @@ struct SettingsView: View {
                 }
             }
 
-            Section {
-                HStack {
-                    Text(displaySummary)
-                    Spacer()
-                    Button("Rescan") { brightness.scan() }
+            if DialMode.available.contains(.brightness) {
+                Section {
+                    HStack {
+                        Text(displaySummary)
+                        Spacer()
+                        Button("Rescan") { brightness.scan() }
+                    }
+                } header: {
+                    Text("Displays")
+                } footer: {
+                    Text("Brightness mode sets external monitors over DDC/CI. Turn on DDC/CI in each monitor's own menu if it doesn't respond.")
                 }
-            } header: {
-                Text("Displays")
-            } footer: {
-                Text("Brightness mode sets external monitors over DDC/CI. Turn on DDC/CI in each monitor's own menu if it doesn't respond.")
             }
 
             Section {
@@ -122,7 +126,9 @@ struct SettingsView: View {
                     set: { model.setLaunchAtLogin($0) }
                 ))
                 .disabled(!model.canLaunchAtLogin)
-                UpdateRow(updates: model.updates, automatic: $settings.checkForUpdates)
+                if UpdateChecker.isSupported {
+                    UpdateRow(updates: model.updates, automatic: $settings.checkForUpdates)
+                }
                 HStack {
                     Spacer()
                     Button("Restore Defaults") { settings.restoreDefaults() }
@@ -264,7 +270,7 @@ private struct ProfileRow: View {
             Text(profile.name)
             Spacer()
             Picker("Mode", selection: mode) {
-                ForEach(DialMode.allCases) { mode in
+                ForEach(DialMode.available) { mode in
                     Label(settings.title(for: mode), systemImage: mode.symbol).tag(mode)
                 }
             }

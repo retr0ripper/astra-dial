@@ -5,7 +5,7 @@ import SwiftUI
 
 @Observable
 final class HUDState {
-    var modes: [DialMode] = DialMode.allCases
+    var modes: [DialMode] = DialMode.available
     var isWheelOpen = false
     var activeMode: DialMode = .volume
     /// Unwrapped highlight position, so the highlight animates the short way across 12 o'clock.
