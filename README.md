@@ -52,10 +52,19 @@ Grant Input Monitoring and Accessibility when asked, then turn the knob to pair 
 `swift run AstraDial` also works for quick iteration, but launch at login and update checks only
 work from the bundled app.
 
-Run `Scripts/create-signing-cert.sh` once first. It creates a self-signed "Astra Dial Local Signing"
-certificate that `bundle.sh` picks up, so every build has the same identity and macOS keeps
-Input Monitoring and Accessibility across rebuilds. Without it, builds are signed ad-hoc and macOS
-asks again after each one. `SIGN_IDENTITY` overrides the choice (for example a Developer ID).
+macOS ties Input Monitoring and Accessibility to the signing identity, so `bundle.sh` signs every
+build the same way: with your **Developer ID Application** certificate when the keychain has one
+(as releases are, so dev builds and an installed copy share permissions), otherwise with
+"Astra Dial Local Signing", which `Scripts/create-signing-cert.sh` creates once. Without either,
+builds are signed ad-hoc and macOS asks again after each one. `SIGN_IDENTITY` overrides the choice.
+
+If the switches in System Settings are on but the app still asks, the grants belong to a build
+signed differently. Reset them and grant again:
+
+```sh
+tccutil reset ListenEvent com.astradial.AstraDial
+tccutil reset Accessibility com.astradial.AstraDial
+```
 
 ### Test
 

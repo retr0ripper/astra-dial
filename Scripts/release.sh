@@ -20,18 +20,12 @@ OUT="build/release"
 APP="build/Astra Dial.app"
 DMG="$OUT/AstraDial-$VERSION.dmg"
 
-# Prefer a Developer ID identity for releases when one is installed; bundle.sh otherwise
-# falls back to the local certificate.
-if [[ -z "${SIGN_IDENTITY:-}" ]]; then
-  DEVELOPER_ID="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)"
-  [[ -n "$DEVELOPER_ID" ]] && export SIGN_IDENTITY="$DEVELOPER_ID"
-fi
-
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "warning: the working tree has uncommitted changes; the build won't match a commit." >&2
 fi
 
-VERSION="$VERSION" SIGN_IDENTITY="${SIGN_IDENTITY:-}" Scripts/bundle.sh --universal
+# bundle.sh picks a Developer ID identity when one is installed.
+VERSION="$VERSION" SIGN_IDENTITY="${SIGN_IDENTITY:-}" SIGN_TIMESTAMP=1 Scripts/bundle.sh --universal
 ARCHS="$(lipo -archs "$APP/Contents/MacOS/AstraDial")"
 [[ "$ARCHS" == *arm64* && "$ARCHS" == *x86_64* ]] || { echo "error: expected a universal binary, got: $ARCHS" >&2; exit 1; }
 codesign --verify --deep --strict "$APP"
