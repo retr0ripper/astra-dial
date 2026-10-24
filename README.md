@@ -76,6 +76,11 @@ make test         # AstraCore unit tests; CI runs these on every push and pull r
 
 ### Release
 
+Bump `VERSION`, commit, and push a matching tag (`git tag v0.3.0 && git push origin v0.3.0`).
+The Release workflow then tests, signs, notarizes, publishes the GitHub release and updates the
+tap. It needs the secrets listed at the top of `.github/workflows/release.yml`. To release from
+this Mac instead:
+
 ```sh
 make release      # universal app, DMG and Homebrew cask in build/release/
 ```
