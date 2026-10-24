@@ -7,6 +7,9 @@ struct MenuView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
+            if let release = model.updates.available {
+                UpdateBanner(version: release.version.description, action: model.updates.openReleasePage)
+            }
             Divider()
             permissions
             Divider()
@@ -97,7 +100,7 @@ struct MenuView: View {
                 .pickerStyle(.menu)
                 .disabled(!model.isTakeoverActive)
 
-                Text("Turn: \(model.mode.turnHint) · Press: \(model.pressHint)")
+                Text("Turn: \(model.turnHint) · Press: \(model.pressHint)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -174,6 +177,23 @@ private struct PermissionRow: View {
             if !granted {
                 Button("Grant…", action: action).controlSize(.small)
             }
+        }
+    }
+}
+
+private struct UpdateBanner: View {
+    let version: String
+    let action: () -> Void
+
+    var body: some View {
+        HStack {
+            Image(systemName: "arrow.down.circle.fill").foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Astra Dial \(version) is available").font(.callout)
+                Text("brew upgrade astra-dial, or download the DMG").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("View…", action: action).controlSize(.small)
         }
     }
 }

@@ -1,3 +1,4 @@
+import AstraCore
 import Foundation
 import Observation
 
@@ -15,7 +16,7 @@ struct AppProfile: Codable, Hashable, Identifiable {
 final class DialSettings {
     /// Every mode, in the user's wheel order. Hidden modes keep their place.
     var modeOrder: [DialMode] = DialMode.allCases { didSet { changed() } }
-    var disabledModes: Set<DialMode> = [] { didSet { changed() } }
+    var disabledModes: Set<DialMode> = DialSettings.offByDefault { didSet { changed() } }
     var pressActions: [DialMode: PressAction] = [:] { didSet { changed() } }
 
     /// Pixels scrolled per detent before acceleration.
@@ -31,12 +32,22 @@ final class DialSettings {
     var autoProfiles = true { didSet { changed() } }
     var appProfiles: [AppProfile] = [] { didSet { changed() } }
 
+    /// Custom mode's shortcuts: clockwise, counter-clockwise, and its default press.
+    var customForward: KeyShortcut? { didSet { changed() } }
+    var customBack: KeyShortcut? { didSet { changed() } }
+    var customPress: KeyShortcut? { didSet { changed() } }
+
+    /// Look for a newer release on GitHub once a day.
+    var checkForUpdates = true { didSet { changed() } }
+
     /// Called after any change has been saved.
     @ObservationIgnored var onChange: (() -> Void)?
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var isLoading = false
     private static let key = "settings"
+    /// Custom does nothing until its shortcuts are recorded, so it starts off the wheel.
+    static let offByDefault: Set<DialMode> = [.custom]
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -83,7 +94,7 @@ final class DialSettings {
     /// build still load after new fields are added.
     private struct Stored: Codable {
         var modeOrder: [String] = DialMode.allCases.map(\.rawValue)
-        var disabledModes: [String] = []
+        var disabledModes: [String] = DialSettings.offByDefault.map(\.rawValue)
         var pressActions: [String: String] = [:]
         var scrollSpeed: Double = 48
         var spinAcceleration = true
@@ -93,6 +104,10 @@ final class DialSettings {
         var wheelTimeout: Double = 5
         var autoProfiles = true
         var appProfiles: [AppProfile] = []
+        var customForward: KeyShortcut?
+        var customBack: KeyShortcut?
+        var customPress: KeyShortcut?
+        var checkForUpdates = true
 
         init() {}
 
@@ -112,6 +127,10 @@ final class DialSettings {
             // A profile naming a mode this build doesn't know is dropped rather than failing the load.
             appProfiles = (try? c.decodeIfPresent([FailableProfile].self, forKey: .appProfiles))?
                 .compactMap(\.profile) ?? d.appProfiles
+            customForward = try? c.decodeIfPresent(KeyShortcut.self, forKey: .customForward)
+            customBack = try? c.decodeIfPresent(KeyShortcut.self, forKey: .customBack)
+            customPress = try? c.decodeIfPresent(KeyShortcut.self, forKey: .customPress)
+            checkForUpdates = try c.decodeIfPresent(Bool.self, forKey: .checkForUpdates) ?? d.checkForUpdates
         }
     }
 
@@ -134,6 +153,10 @@ final class DialSettings {
         stored.wheelTimeout = wheelTimeout
         stored.autoProfiles = autoProfiles
         stored.appProfiles = appProfiles
+        stored.customForward = customForward
+        stored.customBack = customBack
+        stored.customPress = customPress
+        stored.checkForUpdates = checkForUpdates
         if let data = try? JSONEncoder().encode(stored) { defaults.set(data, forKey: Self.key) }
         onChange?()
     }
@@ -149,9 +172,11 @@ final class DialSettings {
         defer { isLoading = false }
         // Unknown modes are dropped; modes added in later versions go at the end.
         var order = stored.modeOrder.compactMap(DialMode.init(rawValue:))
-        order += DialMode.allCases.filter { !order.contains($0) }
+        let added = DialMode.allCases.filter { !order.contains($0) }
+        order += added
         modeOrder = order
         disabledModes = Set(stored.disabledModes.compactMap(DialMode.init(rawValue:)))
+            .union(DialSettings.offByDefault.intersection(added))
         pressActions = Dictionary(uniqueKeysWithValues: stored.pressActions.compactMap { key, value in
             guard let mode = DialMode(rawValue: key), let action = PressAction(rawValue: value) else { return nil }
             return (mode, action)
@@ -164,5 +189,9 @@ final class DialSettings {
         wheelTimeout = stored.wheelTimeout
         autoProfiles = stored.autoProfiles
         appProfiles = stored.appProfiles
+        customForward = stored.customForward
+        customBack = stored.customBack
+        customPress = stored.customPress
+        checkForUpdates = stored.checkForUpdates
     }
 }

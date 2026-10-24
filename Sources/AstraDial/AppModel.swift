@@ -48,6 +48,7 @@ final class AppModel {
     private var decoder = KnobDecoder()
     private var recognizer = GestureRecognizer()
     let settings: DialSettings
+    let updates = UpdateChecker()
     private let runner: ModeRunner
     private let engine: DialEngine
     private let settingsWindow = SettingsWindowController()
@@ -55,6 +56,8 @@ final class AppModel {
     private let hud = WheelHUD()
     private var gestureTimer: Timer?
     private var permissionTimer: Timer?
+    /// Whether `updates` is set to check daily, so unrelated settings changes don't re-check.
+    private var updatesAutomatic: Bool?
 
     struct PairedDevice: Codable, Hashable, Identifiable {
         let id: DeviceID
@@ -137,6 +140,9 @@ final class AppModel {
 
     /// What a press does in the active mode, following Settings.
     var pressHint: String { runner.pressHint(mode) }
+
+    /// What a turn does in the active mode.
+    var turnHint: String { runner.turnHint(mode) }
 
     func openSettings() {
         settingsWindow.show(model: self)
@@ -284,6 +290,10 @@ final class AppModel {
     }
 
     private func applySettings() {
+        if settings.checkForUpdates != updatesAutomatic {
+            updatesAutomatic = settings.checkForUpdates
+            updates.setAutomatic(settings.checkForUpdates)
+        }
         recognizer.doublePressWindow = settings.doublePressWindow
         recognizer.longPressDuration = settings.longPressDuration
         engine.settingsDidChange()

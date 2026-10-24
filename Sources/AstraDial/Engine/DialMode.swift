@@ -11,6 +11,7 @@ enum DialMode: String, CaseIterable, Identifiable, Codable {
     case undo
     case scrub
     case slides
+    case custom
 
     var id: String { rawValue }
 
@@ -26,6 +27,7 @@ enum DialMode: String, CaseIterable, Identifiable, Codable {
         case .undo: "Undo"
         case .scrub: "Scrub"
         case .slides: "Slides"
+        case .custom: "Custom"
         }
     }
 
@@ -41,6 +43,7 @@ enum DialMode: String, CaseIterable, Identifiable, Codable {
         case .undo: "arrow.uturn.backward"
         case .scrub: "film"
         case .slides: "play.rectangle"
+        case .custom: "keyboard"
         }
     }
 
@@ -61,6 +64,7 @@ enum DialMode: String, CaseIterable, Identifiable, Codable {
         case .undo: "⇧⌘Z / ⌘Z"
         case .scrub: "→ / ←"
         case .slides: "next / previous slide"
+        case .custom: "your shortcuts"
         }
     }
 
@@ -77,6 +81,7 @@ enum DialMode: String, CaseIterable, Identifiable, Codable {
         case .undo: "save ⌘S"
         case .scrub: "play/pause (space)"
         case .slides: "black screen (B)"
+        case .custom: "your press shortcut"
         }
     }
 }

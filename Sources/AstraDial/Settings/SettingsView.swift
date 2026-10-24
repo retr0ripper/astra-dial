@@ -63,6 +63,16 @@ struct SettingsView: View {
                 Text("Switching to one of these apps selects its mode; leaving returns to the mode you were using. A mode you pick inside the app lasts until you switch apps.")
             }
 
+            Section {
+                LabeledContent("Turn clockwise") { ShortcutRecorder(shortcut: $settings.customForward) }
+                LabeledContent("Turn counter-clockwise") { ShortcutRecorder(shortcut: $settings.customBack) }
+                LabeledContent("Press") { ShortcutRecorder(shortcut: $settings.customPress) }
+            } header: {
+                Text("Custom mode")
+            } footer: {
+                Text("Any shortcut, sent to the frontmost app once per click. Press uses this shortcut when its press action is Mode default. Esc cancels recording.")
+            }
+
             Section("Feel") {
                 LabeledSlider(title: "Scroll speed", value: $settings.scrollSpeed, range: 16...120, step: 8) {
                     "\(Int($0)) px per click"
@@ -100,6 +110,7 @@ struct SettingsView: View {
                     set: { model.setLaunchAtLogin($0) }
                 ))
                 .disabled(!model.canLaunchAtLogin)
+                UpdateRow(updates: model.updates, automatic: $settings.checkForUpdates)
                 HStack {
                     Spacer()
                     Button("Restore Defaults") { settings.restoreDefaults() }
@@ -119,6 +130,37 @@ struct SettingsView: View {
             "\(count) external display\(count == 1 ? "" : "s") · " +
                 (brightness.canRead ? "responding, at \(brightness.level)%" : "not answering reads, using last level \(brightness.level)%")
         }
+    }
+}
+
+private struct UpdateRow: View {
+    let updates: UpdateChecker
+    @Binding var automatic: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Toggle("Check for updates daily", isOn: $automatic)
+                Spacer()
+                if let release = updates.available {
+                    Button("Get \(release.version.description)…", action: updates.openReleasePage)
+                }
+                Button("Check Now", action: updates.check)
+                    .disabled(updates.isChecking || updates.current == nil)
+            }
+            Text(status)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var status: String {
+        guard let current = updates.current else { return "Update checks need the bundled app (make app)" }
+        if updates.isChecking { return "Checking…" }
+        if let error = updates.lastError { return error }
+        if let release = updates.available { return "Version \(release.version) is available (you have \(current))" }
+        if updates.lastChecked != nil { return "Astra Dial \(current) is up to date" }
+        return "Version \(current)"
     }
 }
 

@@ -59,6 +59,12 @@ final class ModeRunner {
         case .slides:
             KeySender.press(forward ? .right : .left)
             return forward ? "next slide" : "previous slide"
+        case .custom:
+            guard let shortcut = forward ? settings.customForward : settings.customBack else {
+                return "no shortcut set"
+            }
+            KeySender.press(shortcut)
+            return shortcut.display
         }
     }
 
@@ -77,7 +83,16 @@ final class ModeRunner {
     /// The press hint shown for a mode, following its press setting.
     func pressHint(_ mode: DialMode) -> String {
         let action = settings.pressAction(for: mode)
-        return action == .modeDefault ? mode.defaultPressHint : action.title.lowercased()
+        guard action == .modeDefault else { return action.title.lowercased() }
+        if mode == .custom { return settings.customPress?.display ?? "nothing set" }
+        return mode.defaultPressHint
+    }
+
+    /// The turn hint shown for a mode; Custom shows its recorded shortcuts.
+    func turnHint(_ mode: DialMode) -> String {
+        guard mode == .custom else { return mode.turnHint }
+        if settings.customForward == nil, settings.customBack == nil { return "no shortcuts set" }
+        return "\(settings.customForward?.display ?? "–") / \(settings.customBack?.display ?? "–")"
     }
 
     private func pressDefault(_ mode: DialMode) -> String {
@@ -92,6 +107,10 @@ final class ModeRunner {
         case .undo: KeySender.press(.s, .maskCommand)
         case .scrub: KeySender.press(.space)
         case .slides: KeySender.press(.b)
+        case .custom:
+            guard let shortcut = settings.customPress else { return "no shortcut set" }
+            KeySender.press(shortcut)
+            return shortcut.display
         }
         return mode.defaultPressHint
     }
