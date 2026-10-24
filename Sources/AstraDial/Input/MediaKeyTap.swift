@@ -19,6 +19,7 @@ final class MediaKeyTap {
     private var held: [Int: CGEvent] = [:]
     private var nextID = 0
     private var expiryTimer: Timer?
+    private var hasClaimed = false
 
     var isRunning: Bool { tap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false }
 
@@ -37,7 +38,11 @@ final class MediaKeyTap {
                 return Unmanaged<MediaKeyTap>.fromOpaque(context).takeUnretainedValue().handle(type: type, event: event)
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else { return false }
+        ) else {
+            log.error("couldn't create the event tap")
+            return false
+        }
+        log.info("event tap created")
 
         self.tap = tap
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
@@ -88,6 +93,10 @@ final class MediaKeyTap {
         log.debug("event key=\(press.key.rawValue) down=\(press.isDown) → \(String(describing: decision))")
         switch decision {
         case .knob:
+            if !hasClaimed {
+                hasClaimed = true
+                log.info("took the first knob event from macOS")
+            }
             return nil
         case .pending:
             if let copy = event.copy() { held[nextID] = copy }

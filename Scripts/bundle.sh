@@ -3,6 +3,8 @@
 #
 #   Scripts/bundle.sh            release build for this Mac's architecture
 #   Scripts/bundle.sh --universal  arm64 + x86_64
+#   SANDBOX=1 Scripts/bundle.sh    "Astra Dial Sandbox": App Sandbox on, its own bundle ID, to test
+#                                  what works under Mac App Store rules
 #
 # Signing: uses a Developer ID Application identity if the keychain has one, else
 # "Astra Dial Local Signing" if Scripts/create-signing-cert.sh has created it. macOS ties
@@ -16,6 +18,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 APP_NAME="Astra Dial"
 BUNDLE_ID="${BUNDLE_ID:-com.astradial.AstraDial}"
+ENTITLEMENTS=()
+if [[ "${SANDBOX:-}" == 1 ]]; then
+  # A separate app, so its permissions and settings don't touch the regular build's.
+  APP_NAME="Astra Dial Sandbox"
+  BUNDLE_ID="$BUNDLE_ID.sandbox"
+  ENTITLEMENTS=(--entitlements packaging/sandbox.entitlements)
+fi
 VERSION="${VERSION:-$(cat VERSION)}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(git rev-list --count HEAD 2>/dev/null || echo 1)}"
 LOCAL_IDENTITY="Astra Dial Local Signing"
@@ -71,5 +80,5 @@ PLIST
 # Notarization needs a secure timestamp; dev builds skip the network call.
 TIMESTAMP=(--timestamp=none)
 [[ "${SIGN_TIMESTAMP:-}" == 1 ]] && TIMESTAMP=(--timestamp)
-codesign --force --options runtime "${TIMESTAMP[@]}" --sign "$SIGN_IDENTITY" --identifier "$BUNDLE_ID" "$APP"
+codesign --force --options runtime "${TIMESTAMP[@]}" "${ENTITLEMENTS[@]+"${ENTITLEMENTS[@]}"}" --sign "$SIGN_IDENTITY" --identifier "$BUNDLE_ID" "$APP"
 echo "Built $APP (signed: $SIGN_IDENTITY)"

@@ -4,6 +4,9 @@ import Foundation
 import IOKit
 import Observation
 import ServiceManagement
+import os
+
+private let diagnostics = Logger(subsystem: "com.astradial.AstraDial", category: "Diagnostics")
 
 struct KnobLogLine: Identifiable {
     let id = UUID()
@@ -58,6 +61,7 @@ final class AppModel {
     private var permissionTimer: Timer?
     /// Whether `updates` is set to check daily, so unrelated settings changes don't re-check.
     private var updatesAutomatic: Bool?
+    private var hasReadKnob = false
 
     struct PairedDevice: Codable, Hashable, Identifiable {
         let id: DeviceID
@@ -109,6 +113,8 @@ final class AppModel {
             return key.isKnobKey && (key == .mute || engine.claimsTurns)
         }
 
+        let sandboxed = ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+        diagnose("Sandboxed: \(sandboxed ? "yes" : "no") · Input Monitoring: \(inputMonitoring) · Accessibility: \(accessibilityTrusted) · post events: \(CGPreflightPostEventAccess())")
         startMonitor()
         refreshTakeover()
         if pairedDevices.isEmpty { isPairing = true }
@@ -183,10 +189,13 @@ final class AppModel {
     }
 
     func requestAccessibility() {
+        // A sandboxed app can't prompt for Accessibility; CGRequestPostEventAccess is the
+        // request made for it, and lists the app under Accessibility.
+        let postEvents = CGRequestPostEventAccess()
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        if !AXIsProcessTrustedWithOptions(options) {
-            openPrivacyPane("Privacy_Accessibility")
-        }
+        let trusted = AXIsProcessTrustedWithOptions(options)
+        diagnose("Requested access · post events: \(postEvents) · Accessibility: \(trusted)")
+        if !trusted { openPrivacyPane("Privacy_Accessibility") }
     }
 
     var canLaunchAtLogin: Bool { Bundle.main.bundleURL.pathExtension == "app" }
@@ -204,6 +213,10 @@ final class AppModel {
     // MARK: Input
 
     private func handle(_ event: HIDEvent) {
+        if !hasReadKnob {
+            hasReadKnob = true
+            diagnostics.info("first HID event: page 0x\(String(event.usagePage, radix: 16), privacy: .public) usage 0x\(String(event.usage, radix: 16), privacy: .public)")
+        }
         if isPairing, KnobDecoder.isPairingCandidate(event) {
             pair(with: event)
             return
@@ -228,7 +241,9 @@ final class AppModel {
     private func perform(_ gestures: [KnobGesture]) {
         for gesture in gestures {
             if isTakeoverActive {
-                append(engine.perform(gesture))
+                let result = engine.perform(gesture)
+                diagnostics.info("\(self.mode.rawValue, privacy: .public): \(result, privacy: .public)")
+                append(result)
             } else {
                 append("\(gesture.logName) (modes off: knob controls volume)")
             }
@@ -258,6 +273,7 @@ final class AppModel {
         }
         decoder.devices = Set(pairedDevices.map(\.id))
         isPairing = false
+        diagnostics.info("paired \(device.name, privacy: .public) over \(device.transport, privacy: .public)")
         refreshConnected()
         refreshTakeover()
         append("Paired \(device.name) \(device.id) over \(device.transport.isEmpty ? "unknown transport" : device.transport)")
@@ -265,6 +281,7 @@ final class AppModel {
 
     private func startMonitor() {
         let result = monitor.start()
+        diagnose("Open HID devices: \(result == kIOReturnSuccess ? "ok" : "0x" + String(UInt32(bitPattern: result), radix: 16)) · \(monitor.devices.count) devices")
         if result == kIOReturnSuccess {
             monitorError = nil
             refreshConnected()
@@ -280,7 +297,11 @@ final class AppModel {
     private func refreshTakeover() {
         let wanted = takeoverEnabled && !pairedDevices.isEmpty && accessibilityTrusted
         if wanted, !mediaKeyTap.isRunning {
-            if !mediaKeyTap.start() { append("Couldn't start the media-key tap. Check Accessibility.") }
+            if mediaKeyTap.start() {
+                diagnose("Media-key tap started")
+            } else {
+                diagnose("Couldn't start the media-key tap. Check Accessibility.")
+            }
         } else if !wanted, mediaKeyTap.isRunning {
             mediaKeyTap.stop()
         }
@@ -304,6 +325,7 @@ final class AppModel {
     private func permissionTick() {
         let before = (inputMonitoring, accessibilityTrusted)
         refreshPermissions()
+        if before.1 != accessibilityTrusted { diagnose("Accessibility now \(accessibilityTrusted) · post events: \(CGPreflightPostEventAccess())") }
         if before.0 != .granted, inputMonitoring == .granted { startMonitor() }
         if before.1 != accessibilityTrusted || mediaKeyTap.isRunning != isTakeoverActive { refreshTakeover() }
     }
@@ -319,6 +341,12 @@ final class AppModel {
 
     private func refreshLaunchAtLogin() {
         launchAtLogin = canLaunchAtLogin && SMAppService.mainApp.status == .enabled
+    }
+
+    /// Logs to the menu and to the system log, where `log show` can read it.
+    private func diagnose(_ text: String) {
+        diagnostics.info("\(text, privacy: .public)")
+        append(text)
     }
 
     private func append(_ text: String) {
