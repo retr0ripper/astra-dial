@@ -27,6 +27,10 @@ let package = Package(
             name: "AstraCoreTests",
             dependencies: ["AstraCore"]
         ),
+        .testTarget(
+            name: "AstraDialTests",
+            dependencies: ["AstraDial"]
+        ),
     ],
     swiftLanguageModes: [.v5]
 )
