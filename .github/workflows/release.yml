@@ -85,9 +85,8 @@ jobs:
             --keychain "$RUNNER_TEMP/signing.keychain-db"
 
       - name: Build, sign and notarize
-        run: |
-          NOTARY_PROFILE=astra-dial GITHUB_REPO="$GITHUB_REPOSITORY" Scripts/release.sh
-          xcrun stapler validate build/release/AstraDial-*.dmg
+        # release.sh staples and validates the DMG itself.
+        run: NOTARY_PROFILE=astra-dial GITHUB_REPO="$GITHUB_REPOSITORY" Scripts/release.sh
 
       - name: Publish the GitHub release
         env:
